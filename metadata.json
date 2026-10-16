@@ -1,0 +1,6 @@
+{
+  "name": "MathDiagnostic AI",
+  "description": "Hệ thống Đánh giá Thích ứng và Chẩn đoán Vùng trũng Kiến thức Toán THPT chuẩn GDPT 2018",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
