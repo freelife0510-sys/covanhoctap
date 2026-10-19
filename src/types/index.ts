@@ -16,25 +16,93 @@ export type ErrorCategory =
 
 export interface ClassRoom {
   id: string;
-  name: string;
+  teacherId: string;
+  name: string; // e.g. "Lớp 12A1", "Lớp 10B2"
   grade: '10' | '11' | '12';
+  academicYear: string; // e.g. "2025 - 2026"
+  classCode: string; // e.g. "12A1-2026"
   studentCount: number;
+  notes?: string;
+  createdAt?: string;
 }
 
-export interface Student {
+export type CognitiveLevel = 'Nhận biết' | 'Thông hiểu' | 'Vận dụng';
+
+export interface KnowledgeTopicGap {
+  topic: string;
+  grade: '10' | '11' | '12';
+  cognitiveLevel: CognitiveLevel;
+  errorFrequency: number;
+  description: string;
+  remedyAction: string;
+}
+
+export interface AssignedTask {
   id: string;
+  title: string;
+  topic: string;
+  deadline?: string;
+  completed: boolean;
+  assignedAt: string;
+  notes?: string;
+}
+
+export interface TestHistoryItem {
+  id: string;
+  date: string;
+  score: number; // Thang điểm 10
+  durationMinutes: number;
+  correctAnswers: number;
+  totalQuestions: number;
+  gapsDetected: string[];
+  details?: {
+    questionId: number;
+    problem: string;
+    studentAnswer: string;
+    isCorrect: boolean;
+    note?: string;
+  }[];
+}
+
+export interface StudentAccount {
+  id: string; // Mã học sinh: ví dụ "HS12A1-01"
+  studentCode: string;
   name: string;
   classId: string;
+  className?: string;
+  teacherId: string;
+  teacherName?: string;
+  password: string;
   avatar?: string;
   school?: string;
+  status: 'diagnosed' | 'not_started' | 'needs_remedy';
+  latestScore?: number; // Điểm gần nhất (thang 10)
+  gapsCount: number;
+  detectedGaps?: string[];
+  notesFromTeacher?: string;
+  assignedTasks?: AssignedTask[];
+  testHistory?: TestHistoryItem[];
+  createdAt?: string;
 }
 
+// Backward compatibility alias for Student
+export type Student = StudentAccount;
+
 export interface Teacher {
-  id: string;
+  id: string; // email hoặc UUID
+  email: string;
   name: string;
   school: string;
-  classList: ClassRoom[];
   avatar?: string;
+  classList: ClassRoom[];
+  createdAt?: string;
+}
+
+export interface AuthSession {
+  role: Role;
+  teacherUser: Teacher | null;
+  studentUser: StudentAccount | null;
+  isAuthenticated: boolean;
 }
 
 export interface FollowUpProblem {

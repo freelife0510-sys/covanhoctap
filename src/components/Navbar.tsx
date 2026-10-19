@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { 
-  Role 
+  Role,
+  AuthSession,
+  Teacher,
+  StudentAccount
 } from '../types/index.ts';
 import { 
   GraduationCap, 
@@ -14,7 +17,10 @@ import {
   BookOpenCheck,
   Download,
   Terminal,
-  FolderArchive
+  FolderArchive,
+  LogOut,
+  User,
+  LogIn
 } from 'lucide-react';
 import { downloadCompleteProjectZip } from '../utils/downloadZip.ts';
 
@@ -23,6 +29,9 @@ interface NavbarProps {
   onRoleChange: (role: Role) => void;
   apiKey: string;
   onSaveApiKey: (key: string) => void;
+  authSession?: AuthSession;
+  onLogout?: () => void;
+  onOpenLoginModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -30,6 +39,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onRoleChange,
   apiKey,
   onSaveApiKey,
+  authSession,
+  onLogout,
+  onOpenLoginModal,
 }) => {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [inputKey, setInputKey] = useState(apiKey);
@@ -58,14 +70,16 @@ export const Navbar: React.FC<NavbarProps> = ({
     }, 1200);
   };
 
+  const currentUser = currentRole === 'teacher' ? authSession?.teacherUser : authSession?.studentUser;
+
   return (
     <>
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-2xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
           
           {/* Logo & Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-600 via-teal-600 to-slate-800 flex items-center justify-center text-white shadow-sm ring-2 ring-emerald-500/20">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-slate-800 flex items-center justify-center text-white shadow-sm ring-2 ring-emerald-500/20">
               <span className="font-serif font-black text-lg">π</span>
             </div>
             <div>
@@ -94,7 +108,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <GraduationCap className="w-4 h-4 text-emerald-600" />
-              <span>Chế độ Học sinh</span>
+              <span className="hidden sm:inline">Chế độ Học sinh</span>
+              <span className="sm:hidden">Học sinh</span>
             </button>
 
             <button
@@ -106,24 +121,70 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <UserCheck className="w-4 h-4 text-teal-600" />
-              <span>Chế độ Giáo viên</span>
+              <span className="hidden sm:inline">Chế độ Giáo viên</span>
+              <span className="sm:hidden">Giáo viên</span>
             </button>
           </div>
 
-          {/* Right Action Icons: Key config, Pedagogy info & Download Code */}
+          {/* Right Action Icons & User Identity */}
           <div className="flex items-center gap-2">
+            
+            {/* User Profile / Login status */}
+            {authSession?.isAuthenticated && currentUser ? (
+              <div className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-2xl bg-slate-50 border border-slate-200">
+                <div className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
+                  {currentUser.avatar ? (
+                    <img src={currentUser.avatar} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    currentUser.name.charAt(0)
+                  )}
+                </div>
+                <div className="hidden lg:block text-left">
+                  <p className="text-xs font-bold text-slate-800 line-clamp-1 leading-tight">
+                    {currentUser.name}
+                  </p>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    {currentRole === 'teacher'
+                      ? (currentUser as Teacher).email
+                      : `${(currentUser as StudentAccount).id} • ${(currentUser as StudentAccount).className || 'Lớp'}`}
+                  </p>
+                </div>
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    title="Đổi tài khoản hoặc Đăng xuất"
+                    className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              onOpenLoginModal && (
+                <button
+                  onClick={onOpenLoginModal}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Đăng nhập</span>
+                </button>
+              )
+            )}
+
+            {/* ZIP Download Code */}
             <button
               onClick={handleDownloadZip}
               disabled={isGeneratingZip}
               title="Tải toàn bộ mã nguồn (.ZIP) về máy tính"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-60"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-60"
             >
               <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden sm:inline">
+              <span className="hidden md:inline">
                 {isGeneratingZip ? 'Đang nén ZIP...' : 'Tải Code (.ZIP)'}
               </span>
             </button>
 
+            {/* Socratic Pedagogy Guide */}
             <button
               onClick={() => setShowPedagogyModal(true)}
               title="Tìm hiểu phương pháp Socratic"
@@ -132,12 +193,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               <HelpCircle className="w-4 h-4" />
             </button>
 
+            {/* Gemini API Key */}
             <button
               onClick={() => setShowKeyModal(true)}
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium transition-colors cursor-pointer"
             >
               <Key className="w-3.5 h-3.5 text-amber-500" />
-              <span className="hidden md:inline">
+              <span className="hidden xl:inline">
                 {apiKey ? 'Gemini 2.5 Active' : 'Cấu hình AI'}
               </span>
             </button>
@@ -148,10 +210,10 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Gemini API Key Configuration Modal */}
       {showKeyModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-amber-50 text-amber-600">
+                <div className="p-2 rounded-2xl bg-amber-50 text-amber-600">
                   <Key className="w-5 h-5" />
                 </div>
                 <div>
@@ -218,15 +280,15 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Pedagogy Explanation Modal */}
       {showPedagogyModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-                  <BookOpenCheck className="w-5 h-5" />
+                <div className="p-2 rounded-2xl bg-emerald-50 text-emerald-700">
+                  <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Triết lý Sư phạm Socratic GDPT 2018</h3>
-                  <p className="text-[11px] text-emerald-600 font-medium">Đánh giá vì sự tiến bộ của người học</p>
+                  <h3 className="text-sm font-bold text-slate-900">Phương pháp Vấn đáp Socratic</h3>
+                  <p className="text-[11px] text-slate-500">Khung Đánh giá Năng lực Toán GDPT 2018</p>
                 </div>
               </div>
               <button
@@ -237,42 +299,37 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-700 leading-relaxed max-h-[70vh] overflow-y-auto pr-1">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  1. Không cho đáp số sẵn khi học sinh giải sai
-                </h4>
-                <p className="text-slate-600 text-[11px]">
-                  Thay vì hiện giải chi tiết khiến học sinh phụ thuộc, AI chỉ tóm tắt lý thuyết trọng tâm và đặt 2-3 câu hỏi gợi mở để người học tự lần ngược lại bước tính toán hoặc giả thiết bị bỏ quên.
-                </p>
-              </div>
+            <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
+              <p>
+                Khác với các ứng dụng giải toán thông thường chỉ đưa ra đáp án cuối cùng, <strong>MathDiagnostic AI</strong> ứng dụng nguyên lý sư phạm của <strong>Socrates</strong> kết hợp khung đánh giá năng lực tư duy toán học:
+              </p>
 
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  2. Tờ phiếu A4 sư phạm độc lập cho Học sinh
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+                <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                  <BookOpenCheck className="w-4 h-4 text-emerald-600" />
+                  Quy trình Chẩn đoán & Can thiệp Vùng trũng:
                 </h4>
-                <p className="text-slate-600 text-[11px]">
-                  Bảo vệ tâm lý học đường: Học sinh chỉ xem tiến độ và phản hồi của riêng mình trên phiếu A4 chuẩn hóa, tuyệt đối không bị so sánh với thống kê lớp để tránh áp lực đồng trang lứa.
-                </p>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <h4 className="font-bold text-slate-900 mb-1 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                  3. Bản đồ nhiệt vùng trũng kiến thức cho Giáo viên
-                </h4>
-                <p className="text-slate-600 text-[11px]">
-                  Giáo viên nắm bắt chính xác lớp học đang yếu ở mảng nào (điều kiện xác định, đạo hàm sai dấu, hay công thức hình học Oxyz) để điều chỉnh trọng tâm bài giảng trong tiết học tiếp theo.
-                </p>
+                <ul className="list-disc pl-4 space-y-1 text-slate-700 text-[11px]">
+                  <li>
+                    <strong>Bước 1 - Phát hiện mắt xích đứt gãy:</strong> Nhận diện chính xác bước giải sai (chưa đặt điều kiện, biến đổi đại số sai dấu...).
+                  </li>
+                  <li>
+                    <strong>Bước 2 - Câu hỏi Socratic gợi mở:</strong> Đặt câu hỏi truy hồi tư duy để học sinh tự nhận ra lỗ hổng mà không cảm thấy nản lòng.
+                  </li>
+                  <li>
+                    <strong>Bước 3 - Bù đắp kiến thức cốt lõi:</strong> Hệ thống hóa công thức và định lý cần dùng.
+                  </li>
+                  <li>
+                    <strong>Bước 4 - Luyện tập tương đương & nâng cao:</strong> Giao bài tập cùng dạng để học sinh khắc sâu phản xạ.
+                  </li>
+                </ul>
               </div>
             </div>
 
-            <div className="mt-5 pt-3 border-t border-slate-200 flex justify-end">
+            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
               <button
                 onClick={() => setShowPedagogyModal(false)}
-                className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl cursor-pointer"
+                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-black"
               >
                 Đã hiểu
               </button>
@@ -281,18 +338,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       )}
 
-      {/* Download Success & Setup Guide Modal */}
+      {/* Download Code Modal */}
       {showDownloadModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
+                <div className="p-2 rounded-2xl bg-emerald-50 text-emerald-600">
                   <FolderArchive className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Đã tạo và tải file math-diagnostic-ai.zip!</h3>
-                  <p className="text-[11px] text-emerald-600 font-medium">Bao gồm đầy đủ 21 tệp tin mã nguồn chuẩn TypeScript</p>
+                  <h3 className="text-sm font-bold text-slate-900">Tải Mã Nguồn Hoàn Tất!</h3>
+                  <p className="text-[11px] text-slate-500">Toàn bộ dự án MathDiagnostic AI đã được nén</p>
                 </div>
               </div>
               <button
@@ -303,34 +360,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-700 leading-relaxed">
-              <p className="text-slate-600 text-xs">
-                File <strong>math-diagnostic-ai.zip</strong> đã được nén trực tiếp trên trình duyệt của bạn với cấu trúc chuẩn. Sau khi tải về máy tính, bạn thực hiện 3 bước sau để chạy:
-              </p>
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              File ZIP chứa đầy đủ mã nguồn React 19, TypeScript, Tailwind CSS, KaTeX và cấu hình Vercel.
+            </p>
 
-              {/* Terminal commands box */}
-              <div className="bg-slate-900 text-slate-100 p-3.5 rounded-xl font-mono text-xs space-y-2 border border-slate-800">
-                <div className="flex items-center gap-2 text-[11px] text-slate-400 pb-1 border-b border-slate-800">
-                  <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                  Terminal / Command Prompt tại thư mục giải nén:
-                </div>
-                <div className="text-emerald-400"># 1. Cài đặt các thư viện:</div>
-                <div className="text-slate-200 pl-2">npm install</div>
-                <div className="text-emerald-400 mt-2"># 2. Khởi chạy ứng dụng:</div>
-                <div className="text-slate-200 pl-2">npm run dev</div>
-              </div>
-
-              <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-emerald-900 text-[11px]">
-                💡 <strong>Lưu ý:</strong> Ứng dụng đã tích hợp sẵn bộ kiểm thử toán học cục bộ (Local Fallback), bạn có thể chạy thử ngay mà không bắt buộc phải có API Key.
-              </div>
+            <div className="bg-slate-900 text-emerald-400 p-3.5 rounded-2xl font-mono text-[11px] space-y-1 mb-4">
+              <p className="text-slate-400"># Chạy ứng dụng trên máy tính của bạn:</p>
+              <p>npm install</p>
+              <p>npm run dev</p>
             </div>
 
-            <div className="mt-5 pt-3 border-t border-slate-200 flex justify-end">
+            <div className="flex justify-end">
               <button
                 onClick={() => setShowDownloadModal(false)}
-                className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs cursor-pointer"
+                className="px-5 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-black rounded-xl cursor-pointer"
               >
-                Đã hiểu & Đóng
+                Đóng
               </button>
             </div>
           </div>

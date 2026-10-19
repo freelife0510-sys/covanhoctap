@@ -1,100 +1,242 @@
 import React, { useState, useEffect } from 'react';
-import { Role, MathSubmission, Student, Teacher } from './types/index.ts';
-import { INITIAL_SUBMISSIONS, DEFAULT_STUDENT, DEFAULT_TEACHER } from './data/mockData.ts';
+import { 
+  Role, 
+  MathSubmission, 
+  StudentAccount, 
+  Teacher, 
+  ClassRoom,
+  AuthSession 
+} from './types/index.ts';
+import { 
+  getSavedAuthSession, 
+  saveAuthSession, 
+  clearAuthSession,
+  getClassesForTeacher,
+  saveClassesForTeacher,
+  getStudentsForTeacher,
+  saveStudentsForTeacher,
+  getSubmissionsForTeacher,
+  saveSubmissionsForTeacher,
+  saveTeacherProfile,
+  createSampleDataForTeacher,
+  exportTeacherWorkspaceJson,
+  importTeacherWorkspaceJson,
+  loginTeacherWithGoogle
+} from './services/storageService.ts';
 import Navbar from './components/Navbar.tsx';
 import StudentWorkspace from './components/StudentWorkspace.tsx';
 import TeacherDashboard from './components/TeacherDashboard.tsx';
+import LoginModal from './components/LoginModal.tsx';
 
 export default function App() {
-  const [currentRole, setCurrentRole] = useState<Role>('student');
-  
-  // Student Profile: blank by default, auto-fills when login data exists or when student enters name
-  const [student, setStudent] = useState<Student>(() => {
-    try {
-      const saved = localStorage.getItem('math_student_profile');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.warn('Failed to read student profile cache', e);
-    }
-    return DEFAULT_STUDENT;
+  // Auth Session State
+  const [authSession, setAuthSession] = useState<AuthSession>(() => {
+    const saved = getSavedAuthSession();
+    if (saved && saved.isAuthenticated) return saved;
+
+    // Khởi tạo mặc định một Giáo viên mẫu nếu chưa đăng nhập lần nào
+    const { teacher } = loginTeacherWithGoogle('giaovien.toan@gmail.com', 'ThS. Nguyễn Văn Toàn (GV Toán)');
+    return {
+      role: 'teacher',
+      teacherUser: teacher,
+      studentUser: null,
+      isAuthenticated: true,
+    };
   });
 
-  // Teacher Profile: blank by default, auto-fills when login data exists or when teacher enters info
+  const [currentRole, setCurrentRole] = useState<Role>(authSession.role || 'teacher');
+  const [showLoginModal, setShowLoginModal] = useState(false);
+
+  // Active Teacher Profile & Workspace Data
   const [teacher, setTeacher] = useState<Teacher>(() => {
-    try {
-      const saved = localStorage.getItem('math_teacher_profile');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.warn('Failed to read teacher profile cache', e);
-    }
-    return DEFAULT_TEACHER;
+    return (
+      authSession.teacherUser || {
+        id: 'teacher_default',
+        email: 'giaovien.toan@gmail.com',
+        name: 'ThS. Nguyễn Văn Toàn (GV Toán)',
+        school: 'THPT Chuyên Chuẩn GDPT 2018',
+        classList: [],
+      }
+    );
+  });
+
+  const [classes, setClasses] = useState<ClassRoom[]>(() => {
+    const loaded = getClassesForTeacher(teacher.id);
+    if (loaded && loaded.length > 0) return loaded;
+    const sample = createSampleDataForTeacher(teacher);
+    saveClassesForTeacher(teacher.id, sample.classes);
+    return sample.classes;
+  });
+
+  const [students, setStudents] = useState<StudentAccount[]>(() => {
+    const loaded = getStudentsForTeacher(teacher.id);
+    if (loaded && loaded.length > 0) return loaded;
+    const sample = createSampleDataForTeacher(teacher);
+    saveStudentsForTeacher(teacher.id, sample.students);
+    return sample.students;
   });
 
   const [submissions, setSubmissions] = useState<MathSubmission[]>(() => {
-    try {
-      const saved = localStorage.getItem('math_submissions_cache');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.warn('Failed to read submissions cache', e);
-    }
-    return INITIAL_SUBMISSIONS;
+    const loaded = getSubmissionsForTeacher(teacher.id);
+    if (loaded && loaded.length > 0) return loaded;
+    const sample = createSampleDataForTeacher(teacher);
+    saveSubmissionsForTeacher(teacher.id, sample.submissions);
+    return sample.submissions;
   });
 
+  // Active Student Profile (for Student Mode)
+  const [currentStudent, setCurrentStudent] = useState<StudentAccount>(() => {
+    if (authSession.studentUser) return authSession.studentUser;
+    if (students.length > 0) return students[0];
+    const sample = createSampleDataForTeacher(teacher);
+    return sample.students[0];
+  });
+
+  // API Key State
   const [apiKey, setApiKey] = useState<string>(() => {
     return localStorage.getItem('gemini_api_key') || '';
   });
 
-  // Save student profile
-  const handleUpdateStudent = (newStudent: Student) => {
-    setStudent(newStudent);
-    try {
-      localStorage.setItem('math_student_profile', JSON.stringify(newStudent));
-    } catch (e) {
-      console.warn('Failed to save student profile', e);
-    }
-  };
+  // Đồng bộ role khi authSession thay đổi
+  useEffect(() => {
+    setCurrentRole(authSession.role);
+  }, [authSession.role]);
 
-  // Save teacher profile
+  // Cập nhật Giáo viên
   const handleUpdateTeacher = (newTeacher: Teacher) => {
     setTeacher(newTeacher);
-    try {
-      localStorage.setItem('math_teacher_profile', JSON.stringify(newTeacher));
-    } catch (e) {
-      console.warn('Failed to save teacher profile', e);
+    saveTeacherProfile(newTeacher);
+    setAuthSession((prev) => ({ ...prev, teacherUser: newTeacher }));
+    saveAuthSession({ ...authSession, teacherUser: newTeacher });
+  };
+
+  // Cập nhật Lớp học
+  const handleUpdateClasses = (newClasses: ClassRoom[]) => {
+    setClasses(newClasses);
+    saveClassesForTeacher(teacher.id, newClasses);
+    const updatedTeacher = { ...teacher, classList: newClasses };
+    setTeacher(updatedTeacher);
+    saveTeacherProfile(updatedTeacher);
+  };
+
+  // Cập nhật Danh sách Học sinh của Giáo viên
+  const handleUpdateStudents = (newStudents: StudentAccount[]) => {
+    setStudents(newStudents);
+    saveStudentsForTeacher(teacher.id, newStudents);
+
+    // Nếu học sinh đang đăng nhập nằm trong danh sách, cập nhật luôn
+    if (currentStudent) {
+      const match = newStudents.find((s) => s.id === currentStudent.id);
+      if (match) {
+        setCurrentStudent(match);
+        if (authSession.role === 'student') {
+          setAuthSession((prev) => ({ ...prev, studentUser: match }));
+          saveAuthSession({ ...authSession, studentUser: match });
+        }
+      }
     }
   };
 
-  // Save submissions cache
-  useEffect(() => {
-    try {
-      localStorage.setItem('math_submissions_cache', JSON.stringify(submissions));
-    } catch (e) {
-      console.warn('Failed to cache submissions', e);
-    }
-  }, [submissions]);
+  // Cập nhật 1 học sinh cụ thể (từ Student Workspace hoặc Student Profile)
+  const handleUpdateSingleStudent = (updatedStudent: StudentAccount) => {
+    const updatedList = students.map((s) => (s.id === updatedStudent.id ? updatedStudent : s));
+    handleUpdateStudents(updatedList);
+    setCurrentStudent(updatedStudent);
+  };
 
-  // Handler for student adding a new submission
+  // Cập nhật Bài nộp
   const handleNewSubmission = (newSub: MathSubmission) => {
-    setSubmissions((prev) => [newSub, ...prev]);
+    const updated = [newSub, ...submissions];
+    setSubmissions(updated);
+    saveSubmissionsForTeacher(teacher.id, updated);
   };
 
-  // Handler for student updating Socratic self-reflection notes
   const handleUpdateNotes = (submissionId: string, notes: string[]) => {
-    setSubmissions((prev) =>
-      prev.map((s) => (s.id === submissionId ? { ...s, studentNotes: notes } : s))
+    const updated = submissions.map((s) =>
+      s.id === submissionId ? { ...s, studentNotes: notes } : s
     );
+    setSubmissions(updated);
+    saveSubmissionsForTeacher(teacher.id, updated);
   };
 
-  // Handler for marking a submission as resolved after self-reflection
   const handleMarkResolved = (submissionId: string) => {
-    setSubmissions((prev) =>
-      prev.map((s) => (s.id === submissionId ? { ...s, hasResolvedMistake: true } : s))
+    const updated = submissions.map((s) =>
+      s.id === submissionId ? { ...s, hasResolvedMistake: true } : s
     );
+    setSubmissions(updated);
+    saveSubmissionsForTeacher(teacher.id, updated);
   };
 
-  // Save API Key
+  // Đăng xuất hoặc Đổi tài khoản
+  const handleLogout = () => {
+    clearAuthSession();
+    setShowLoginModal(true);
+  };
+
+  // Đăng nhập thành công từ Login Modal
+  const handleLoginSuccess = (role: Role, user: Teacher | StudentAccount) => {
+    if (role === 'teacher') {
+      const teacherUser = user as Teacher;
+      setTeacher(teacherUser);
+      const loadedClasses = getClassesForTeacher(teacherUser.id);
+      const loadedStudents = getStudentsForTeacher(teacherUser.id);
+      const loadedSubmissions = getSubmissionsForTeacher(teacherUser.id);
+
+      setClasses(loadedClasses);
+      setStudents(loadedStudents);
+      setSubmissions(loadedSubmissions);
+      if (loadedStudents.length > 0) {
+        setCurrentStudent(loadedStudents[0]);
+      }
+
+      setAuthSession({
+        role: 'teacher',
+        teacherUser,
+        studentUser: null,
+        isAuthenticated: true,
+      });
+      setCurrentRole('teacher');
+    } else {
+      const studentUser = user as StudentAccount;
+      setCurrentStudent(studentUser);
+      setAuthSession({
+        role: 'student',
+        teacherUser: null,
+        studentUser,
+        isAuthenticated: true,
+      });
+      setCurrentRole('student');
+    }
+
+    setShowLoginModal(false);
+  };
+
+  // Sao lưu JSON
+  const handleExportJson = () => {
+    const jsonStr = exportTeacherWorkspaceJson(teacher.id);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `MathDiagnostic_SaoLuu_${teacher.name.replace(/\s+/g, '_')}_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Nhập JSON
+  const handleImportJson = (jsonStr: string) => {
+    const success = importTeacherWorkspaceJson(teacher.id, jsonStr);
+    if (success) {
+      setClasses(getClassesForTeacher(teacher.id));
+      setStudents(getStudentsForTeacher(teacher.id));
+      setSubmissions(getSubmissionsForTeacher(teacher.id));
+      alert('Nhập dữ liệu thành công!');
+    } else {
+      alert('Tệp dữ liệu không hợp lệ!');
+    }
+  };
+
+  // Lưu API Key
   const handleSaveApiKey = (key: string) => {
     setApiKey(key);
     localStorage.setItem('gemini_api_key', key);
@@ -108,6 +250,9 @@ export default function App() {
         onRoleChange={setCurrentRole}
         apiKey={apiKey}
         onSaveApiKey={handleSaveApiKey}
+        authSession={authSession}
+        onLogout={handleLogout}
+        onOpenLoginModal={() => setShowLoginModal(true)}
       />
 
       {/* Main Content Area */}
@@ -115,10 +260,12 @@ export default function App() {
         {currentRole === 'student' ? (
           <StudentWorkspace
             apiKey={apiKey}
-            student={student}
-            onUpdateStudent={handleUpdateStudent}
+            student={currentStudent}
+            onUpdateStudent={handleUpdateSingleStudent}
             onNewSubmission={handleNewSubmission}
-            submissions={submissions.filter((s) => s.studentId === student.id || !s.studentId)}
+            submissions={submissions.filter(
+              (s) => s.studentId === currentStudent?.id || !s.studentId
+            )}
             onUpdateNotes={handleUpdateNotes}
             onMarkResolved={handleMarkResolved}
           />
@@ -126,12 +273,26 @@ export default function App() {
           <TeacherDashboard
             teacher={teacher}
             onUpdateTeacher={handleUpdateTeacher}
+            classes={classes}
+            onUpdateClasses={handleUpdateClasses}
+            students={students}
+            onUpdateStudents={handleUpdateStudents}
             submissions={submissions}
             onUpdateNotes={handleUpdateNotes}
             onMarkResolved={handleMarkResolved}
+            onExportJson={handleExportJson}
+            onImportJson={handleImportJson}
           />
         )}
       </main>
+
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        initialRole={currentRole}
+        onLoginSuccess={handleLoginSuccess}
+      />
 
       {/* Sư phạm Footer */}
       <footer className="no-print mt-12 py-6 bg-white border-t border-slate-200 text-xs text-slate-500">

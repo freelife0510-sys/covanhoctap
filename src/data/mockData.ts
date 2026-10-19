@@ -1,25 +1,35 @@
 import { ClassRoom, MathSubmission, PredefinedExample, Teacher, Student } from '../types/index.ts';
 
 export const MOCK_CLASSES: ClassRoom[] = [
-  { id: 'class-12a1', name: 'Lớp 12A1', grade: '12', studentCount: 38 },
-  { id: 'class-12a2', name: 'Lớp 12A2', grade: '12', studentCount: 36 },
-  { id: 'class-11toan', name: 'Lớp 11 (Toán)', grade: '11', studentCount: 35 },
+  { id: 'class-12a1', teacherId: 'teacher-default', name: 'Lớp 12A1', grade: '12', academicYear: '2025 - 2026', classCode: '12A1-MAT', studentCount: 38 },
+  { id: 'class-12a2', teacherId: 'teacher-default', name: 'Lớp 12A2', grade: '12', academicYear: '2025 - 2026', classCode: '12A2-MAT', studentCount: 36 },
+  { id: 'class-11toan', teacherId: 'teacher-default', name: 'Lớp 11 (Toán)', grade: '11', academicYear: '2025 - 2026', classCode: '11TOAN', studentCount: 35 },
 ];
 
-// Khởi tạo mặc định để trống khi chưa có dữ liệu đăng nhập của Giáo viên
+// Khởi tạo mặc định của Giáo viên
 export const DEFAULT_TEACHER: Teacher = {
   id: 'teacher-default',
-  name: '', // Để trống - Sẽ tự động điền khi có dữ liệu đăng nhập hoặc người dùng cập nhật
-  school: '', // Để trống - Chờ dữ liệu trường
+  email: 'giaovien.toan@gmail.com',
+  name: 'ThS. Nguyễn Văn Toàn',
+  school: 'THPT Chuyên Chuẩn GDPT 2018',
   classList: MOCK_CLASSES,
 };
 
-// Khởi tạo mặc định để trống khi chưa có dữ liệu đăng nhập của Học sinh
+// Khởi tạo mặc định của Học sinh
 export const DEFAULT_STUDENT: Student = {
-  id: 'student-curr',
-  name: '', // Để trống - Sẽ tự động điền khi có dữ liệu đăng nhập hoặc học sinh nhập tên
+  id: 'HS12A1-01',
+  studentCode: 'HS12A1-01',
+  name: 'Nguyễn Văn An',
   classId: 'class-12a1',
-  school: '',
+  className: 'Lớp 12A1',
+  teacherId: 'teacher-default',
+  teacherName: 'ThS. Nguyễn Văn Toàn',
+  password: '123',
+  school: 'THPT Chuyên Chuẩn GDPT 2018',
+  status: 'needs_remedy',
+  latestScore: 5.5,
+  gapsCount: 2,
+  detectedGaps: ['Chưa đặt điều kiện xác định căn thức'],
 };
 
 export const PREDEFINED_EXAMPLES: PredefinedExample[] = [
