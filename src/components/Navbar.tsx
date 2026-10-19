@@ -112,48 +112,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Right Action Icons & User Identity */}
           <div className="flex items-center gap-2">
             
-            {/* User Profile / Login status */}
-            {authSession?.isAuthenticated && currentUser ? (
-              <div className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-2xl bg-slate-50 border border-slate-200">
-                <div className="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
-                  {currentUser.avatar ? (
-                    <img src={currentUser.avatar} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    currentUser.name.charAt(0)
-                  )}
-                </div>
-                <div className="hidden lg:block text-left">
-                  <p className="text-xs font-bold text-slate-800 line-clamp-1 leading-tight">
-                    {currentUser.name}
-                  </p>
-                  <p className="text-[10px] text-slate-500 font-mono">
-                    {currentRole === 'teacher'
-                      ? (currentUser as Teacher).email
-                      : `${(currentUser as StudentAccount).id} • ${(currentUser as StudentAccount).className || 'Lớp'}`}
-                  </p>
-                </div>
-                {onLogout && (
-                  <button
-                    onClick={onLogout}
-                    title="Đổi tài khoản hoặc Đăng xuất"
-                    className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              onOpenLoginModal && (
-                <button
-                  onClick={onOpenLoginModal}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Đăng nhập</span>
-                </button>
-              )
-            )}
-
             {/* Socratic Pedagogy Guide */}
             <button
               onClick={() => setShowPedagogyModal(true)}

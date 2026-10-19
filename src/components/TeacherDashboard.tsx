@@ -425,63 +425,33 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   return (
     <div className="space-y-6">
       
-      {/* Teacher Profile Banner */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white flex items-center justify-center font-bold text-xl shadow-sm shrink-0 overflow-hidden">
-            {teacher.avatar ? (
-              <img src={teacher.avatar} alt={teacher.name} className="w-full h-full object-cover" />
-            ) : (
-              <UserCheck className="w-7 h-7" />
+      {/* Clean Teacher Workspace Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+              Cổng Quản trị Lớp học
+            </span>
+            {teacher.email && teacher.email !== 'giaovien@gmail.com' && (
+              <span className="text-xs text-slate-500 font-mono">
+                {teacher.email}
+              </span>
             )}
           </div>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                Không gian Giáo viên Quản trị
-              </span>
-              <span className="text-xs text-slate-500 font-mono">
-                {teacher.email || 'Google Account'}
-              </span>
-            </div>
-            
-            <h1 className="text-lg sm:text-xl font-black text-slate-900 mt-0.5">
-              {teacher.name || 'Thầy/Cô Bộ môn Toán'}
-            </h1>
-            
-            <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-              <School className="w-3.5 h-3.5 text-slate-400" />
-              {teacher.school || 'Trường THPT Chuẩn GDPT 2018'}
-              <span>•</span>
-              <span className="font-semibold text-emerald-700">{classes.length} Lớp phụ trách</span>
-            </p>
-          </div>
+          <h1 className="text-lg sm:text-xl font-black text-slate-900 mt-1">
+            Quản lý Dạy học & Chẩn đoán Vùng trũng Kiến thức (GDPT 2018)
+          </h1>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {classes.length === 0 && (
-            <button
-              onClick={handleInitSampleWorkspace}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-              Khởi tạo Lớp 12A1 mẫu (5 học sinh)
-            </button>
-          )}
-
-          {onExportJson && (
-            <button
-              onClick={onExportJson}
-              title="Sao lưu toàn bộ dữ liệu lớp học ra file JSON"
-              className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all border border-slate-200"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-600" />
-              Sao lưu JSON
-            </button>
-          )}
-        </div>
+        {classes.length === 0 && (
+          <button
+            onClick={handleInitSampleWorkspace}
+            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-all w-fit"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+            Khởi tạo Lớp 12A1 mẫu (5 học sinh)
+          </button>
+        )}
       </div>
 
       {/* Main Tab Navigation */}

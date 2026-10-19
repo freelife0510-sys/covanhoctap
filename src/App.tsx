@@ -28,6 +28,18 @@ import StudentWorkspace from './components/StudentWorkspace.tsx';
 import TeacherDashboard from './components/TeacherDashboard.tsx';
 import LoginModal from './components/LoginModal.tsx';
 
+// Thanh lọc triệt để cache trình duyệt cũ nếu còn sót dữ liệu "giaovien.toan"
+try {
+  ['math_auth_session', 'math_teacher_profile', 'math_teachers_db', 'google_teacher_email'].forEach((key) => {
+    const val = localStorage.getItem(key);
+    if (val && (val.includes('giaovien.toan') || val.includes('To\u00e0n') || val.includes('Toan'))) {
+      localStorage.removeItem(key);
+    }
+  });
+} catch (e) {
+  console.warn('Lỗi kiểm tra cache cũ:', e);
+}
+
 export default function App() {
   // Auth Session State
   const [authSession, setAuthSession] = useState<AuthSession>(() => {
@@ -56,6 +68,13 @@ export default function App() {
 
   const [currentRole, setCurrentRole] = useState<Role>(authSession.role || 'teacher');
   const [showLoginModal, setShowLoginModal] = useState(false);
+
+  const handleRoleChange = (newRole: Role) => {
+    setCurrentRole(newRole);
+    if (newRole === 'teacher') {
+      setShowLoginModal(true);
+    }
+  };
 
   // Active Teacher Profile & Workspace Data
   const [teacher, setTeacher] = useState<Teacher>(() => {
@@ -257,7 +276,7 @@ export default function App() {
       {/* Top Navigation */}
       <Navbar
         currentRole={currentRole}
-        onRoleChange={setCurrentRole}
+        onRoleChange={handleRoleChange}
         apiKey={apiKey}
         onSaveApiKey={handleSaveApiKey}
         authSession={authSession}
