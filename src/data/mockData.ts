@@ -9,9 +9,9 @@ export const MOCK_CLASSES: ClassRoom[] = [
 // Khởi tạo mặc định của Giáo viên
 export const DEFAULT_TEACHER: Teacher = {
   id: 'teacher-default',
-  email: 'giaovien.toan@gmail.com',
-  name: 'ThS. Nguyễn Văn Toàn',
-  school: 'THPT Chuyên Chuẩn GDPT 2018',
+  email: 'giaovien@gmail.com',
+  name: 'Giáo viên Bộ môn Toán',
+  school: 'THPT Chuẩn GDPT 2018',
   classList: MOCK_CLASSES,
 };
 
@@ -23,7 +23,7 @@ export const DEFAULT_STUDENT: Student = {
   classId: 'class-12a1',
   className: 'Lớp 12A1',
   teacherId: 'teacher-default',
-  teacherName: 'ThS. Nguyễn Văn Toàn',
+  teacherName: 'Giáo viên Bộ môn Toán',
   password: '123',
   school: 'THPT Chuyên Chuẩn GDPT 2018',
   status: 'needs_remedy',

@@ -34,8 +34,18 @@ export default function App() {
     const saved = getSavedAuthSession();
     if (saved && saved.isAuthenticated) return saved;
 
-    // Khởi tạo mặc định một Giáo viên mẫu nếu chưa đăng nhập lần nào
-    const { teacher } = loginTeacherWithGoogle('giaovien.toan@gmail.com', 'ThS. Nguyễn Văn Toàn (GV Toán)');
+    const savedGoogleEmail = localStorage.getItem('google_teacher_email');
+    if (savedGoogleEmail) {
+      const { teacher } = loginTeacherWithGoogle(savedGoogleEmail);
+      return {
+        role: 'teacher',
+        teacherUser: teacher,
+        studentUser: null,
+        isAuthenticated: true,
+      };
+    }
+
+    const { teacher } = loginTeacherWithGoogle('giaovien@gmail.com', 'Giáo viên Bộ môn Toán', 'THPT Chuẩn GDPT 2018');
     return {
       role: 'teacher',
       teacherUser: teacher,
@@ -52,9 +62,9 @@ export default function App() {
     return (
       authSession.teacherUser || {
         id: 'teacher_default',
-        email: 'giaovien.toan@gmail.com',
-        name: 'ThS. Nguyễn Văn Toàn (GV Toán)',
-        school: 'THPT Chuyên Chuẩn GDPT 2018',
+        email: 'giaovien@gmail.com',
+        name: 'Giáo viên Bộ môn Toán',
+        school: 'THPT Chuẩn GDPT 2018',
         classList: [],
       }
     );

@@ -15,14 +15,10 @@ import {
   ShieldCheck, 
   Sparkles,
   BookOpenCheck,
-  Download,
-  Terminal,
-  FolderArchive,
   LogOut,
   User,
   LogIn
 } from 'lucide-react';
-import { downloadCompleteProjectZip } from '../utils/downloadZip.ts';
 
 interface NavbarProps {
   currentRole: Role;
@@ -46,20 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [inputKey, setInputKey] = useState(apiKey);
   const [showPedagogyModal, setShowPedagogyModal] = useState(false);
-  const [showDownloadModal, setShowDownloadModal] = useState(false);
-  const [isGeneratingZip, setIsGeneratingZip] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
-
-  const handleDownloadZip = async () => {
-    setIsGeneratingZip(true);
-    const success = await downloadCompleteProjectZip();
-    setIsGeneratingZip(false);
-    if (success) {
-      setShowDownloadModal(true);
-    } else {
-      alert('Không thể tạo file ZIP. Vui lòng thử lại!');
-    }
-  };
 
   const handleSaveKey = () => {
     onSaveApiKey(inputKey.trim());
@@ -170,19 +153,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )
             )}
-
-            {/* ZIP Download Code */}
-            <button
-              onClick={handleDownloadZip}
-              disabled={isGeneratingZip}
-              title="Tải toàn bộ mã nguồn (.ZIP) về máy tính"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-all shadow-2xs cursor-pointer disabled:opacity-60"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden md:inline">
-                {isGeneratingZip ? 'Đang nén ZIP...' : 'Tải Code (.ZIP)'}
-              </span>
-            </button>
 
             {/* Socratic Pedagogy Guide */}
             <button
@@ -332,50 +302,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-black"
               >
                 Đã hiểu
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Download Code Modal */}
-      {showDownloadModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-2xl bg-emerald-50 text-emerald-600">
-                  <FolderArchive className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Tải Mã Nguồn Hoàn Tất!</h3>
-                  <p className="text-[11px] text-slate-500">Toàn bộ dự án MathDiagnostic AI đã được nén</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowDownloadModal(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-              File ZIP chứa đầy đủ mã nguồn React 19, TypeScript, Tailwind CSS, KaTeX và cấu hình Vercel.
-            </p>
-
-            <div className="bg-slate-900 text-emerald-400 p-3.5 rounded-2xl font-mono text-[11px] space-y-1 mb-4">
-              <p className="text-slate-400"># Chạy ứng dụng trên máy tính của bạn:</p>
-              <p>npm install</p>
-              <p>npm run dev</p>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowDownloadModal(false)}
-                className="px-5 py-2.5 text-xs font-bold text-white bg-slate-900 hover:bg-black rounded-xl cursor-pointer"
-              >
-                Đóng
               </button>
             </div>
           </div>
