@@ -209,9 +209,21 @@ export default function App() {
     saveSubmissionsForTeacher(teacher.id, updated);
   };
 
-  // Đăng xuất hoặc Đổi tài khoản
+  // Đăng xuất hoàn toàn và trở về trang bìa
   const handleLogout = () => {
     clearAuthSession();
+    try {
+      localStorage.removeItem('google_teacher_email');
+    } catch (e) {
+      console.warn('Lỗi xóa cache email:', e);
+    }
+    setAuthSession({
+      role: 'student',
+      teacherUser: null,
+      studentUser: null,
+      isAuthenticated: false,
+    });
+    setCurrentRole('student');
     setCurrentView('landing');
   };
 
