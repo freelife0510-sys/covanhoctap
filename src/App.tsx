@@ -24,10 +24,12 @@ import {
   loginTeacherWithGoogle
 } from './services/storageService.ts';
 import Navbar from './components/Navbar.tsx';
+import LandingPage from './components/LandingPage.tsx';
 import StudentWorkspace from './components/StudentWorkspace.tsx';
 import TeacherDashboard from './components/TeacherDashboard.tsx';
 import TeacherGoogleLoginModal from './components/TeacherGoogleLoginModal.tsx';
 import StudentLoginModal from './components/StudentLoginModal.tsx';
+import AccountInfoModal from './components/AccountInfoModal.tsx';
 
 // Thanh lọc triệt để cache trình duyệt cũ nếu còn sót dữ liệu "giaovien.toan"
 try {
@@ -42,6 +44,9 @@ try {
 }
 
 export default function App() {
+  // Giao diện mở đầu: Mặc định mở Trang bìa (Landing Page) như yêu cầu
+  const [currentView, setCurrentView] = useState<'landing' | 'student' | 'teacher'>('landing');
+
   // Auth Session State
   const [authSession, setAuthSession] = useState<AuthSession>(() => {
     const saved = getSavedAuthSession();
@@ -67,9 +72,10 @@ export default function App() {
     };
   });
 
-  const [currentRole, setCurrentRole] = useState<Role>(authSession.role || 'teacher');
+  const [currentRole, setCurrentRole] = useState<Role>(authSession.role || 'student');
   const [showTeacherLoginModal, setShowTeacherLoginModal] = useState(false);
   const [showStudentLoginModal, setShowStudentLoginModal] = useState(false);
+  const [showAccountInfoModal, setShowAccountInfoModal] = useState(false);
 
   // Active Teacher Profile & Workspace Data
   const [teacher, setTeacher] = useState<Teacher>(() => {
@@ -121,21 +127,21 @@ export default function App() {
     return localStorage.getItem('gemini_api_key') || '';
   });
 
-  // Chuyển đổi Role: Bấm Giáo viên mở Đăng nhập Google, Bấm Học sinh mở Đăng nhập Học sinh
-  const handleRoleChange = (newRole: Role) => {
-    setCurrentRole(newRole);
-    if (newRole === 'teacher') {
-      setShowTeacherLoginModal(true);
-      setShowStudentLoginModal(false);
-    } else {
-      setShowStudentLoginModal(true);
-      setShowTeacherLoginModal(false);
+  // Chuyển đổi giữa các màn hình (Landing, Student, Teacher)
+  const handleNavigate = (view: 'landing' | 'student' | 'teacher') => {
+    setCurrentView(view);
+    if (view === 'student') {
+      setCurrentRole('student');
+    } else if (view === 'teacher') {
+      setCurrentRole('teacher');
     }
   };
 
   // Đồng bộ role khi authSession thay đổi
   useEffect(() => {
-    setCurrentRole(authSession.role);
+    if (authSession.role) {
+      setCurrentRole(authSession.role);
+    }
   }, [authSession.role]);
 
   // Cập nhật Giáo viên
@@ -173,7 +179,7 @@ export default function App() {
     }
   };
 
-  // Cập nhật 1 học sinh cụ thể (từ Student Workspace hoặc Student Profile)
+  // Cập nhật 1 học sinh cụ thể
   const handleUpdateSingleStudent = (updatedStudent: StudentAccount) => {
     const updatedList = students.map((s) => (s.id === updatedStudent.id ? updatedStudent : s));
     handleUpdateStudents(updatedList);
@@ -206,11 +212,7 @@ export default function App() {
   // Đăng xuất hoặc Đổi tài khoản
   const handleLogout = () => {
     clearAuthSession();
-    if (currentRole === 'teacher') {
-      setShowTeacherLoginModal(true);
-    } else {
-      setShowStudentLoginModal(true);
-    }
+    setCurrentView('landing');
   };
 
   // Đăng nhập Giáo viên bằng Google thành công
@@ -234,6 +236,7 @@ export default function App() {
       isAuthenticated: true,
     });
     setCurrentRole('teacher');
+    setCurrentView('teacher');
     setShowTeacherLoginModal(false);
   };
 
@@ -247,6 +250,7 @@ export default function App() {
       isAuthenticated: true,
     });
     setCurrentRole('student');
+    setCurrentView('student');
     setShowStudentLoginModal(false);
   };
 
@@ -286,7 +290,8 @@ export default function App() {
       {/* Top Navigation */}
       <Navbar
         currentRole={currentRole}
-        onRoleChange={handleRoleChange}
+        currentView={currentView}
+        onNavigate={handleNavigate}
         apiKey={apiKey}
         onSaveApiKey={handleSaveApiKey}
         authSession={authSession}
@@ -299,13 +304,27 @@ export default function App() {
           setShowStudentLoginModal(true);
           setShowTeacherLoginModal(false);
         }}
+        onOpenAccountInfo={() => setShowAccountInfoModal(true)}
         teacherUser={teacher}
         studentUser={currentStudent}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
-        {currentRole === 'student' ? (
+        {currentView === 'landing' ? (
+          <LandingPage
+            onGoToStudent={() => handleNavigate('student')}
+            onGoToTeacher={() => handleNavigate('teacher')}
+            onOpenStudentLogin={() => {
+              setShowStudentLoginModal(true);
+              setShowTeacherLoginModal(false);
+            }}
+            onOpenTeacherLogin={() => {
+              setShowTeacherLoginModal(true);
+              setShowStudentLoginModal(false);
+            }}
+          />
+        ) : currentView === 'student' ? (
           <StudentWorkspace
             apiKey={apiKey}
             student={currentStudent}
@@ -334,40 +353,51 @@ export default function App() {
         )}
       </main>
 
-      {/* Modal Đăng nhập Giáo viên bằng Google (hoàn toàn tách biệt) */}
+      {/* Modal Đăng nhập Giáo viên bằng Google */}
       <TeacherGoogleLoginModal
         isOpen={showTeacherLoginModal}
         onClose={() => setShowTeacherLoginModal(false)}
         onLoginSuccess={handleTeacherLoginSuccess}
       />
 
-      {/* Modal Đăng nhập Học sinh (hoàn toàn tách biệt) */}
+      {/* Modal Đăng nhập Học sinh */}
       <StudentLoginModal
         isOpen={showStudentLoginModal}
         onClose={() => setShowStudentLoginModal(false)}
         onLoginSuccess={handleStudentLoginSuccess}
       />
 
-      {/* Sư phạm Footer */}
-      <footer className="no-print mt-12 py-6 bg-white border-t border-slate-200 text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span className="font-semibold text-slate-700">MathDiagnostic AI</span>
-              <span>—</span>
-              <span>Hệ thống Đánh giá Thích ứng và Chẩn đoán Vùng trũng Kiến thức Toán THPT</span>
-            </div>
-            <div className="text-slate-600 font-medium pl-4">
-              Thông tin liên hệ: Thầy Hồ Sỹ Long, SĐT 0943278804
-            </div>
-          </div>
+      {/* Modal Thông tin tài khoản (khi bấm vào mũi tên bên cạnh tên tài khoản) */}
+      <AccountInfoModal
+        isOpen={showAccountInfoModal}
+        onClose={() => setShowAccountInfoModal(false)}
+        role={currentRole}
+        teacher={teacher}
+        student={currentStudent}
+      />
 
-          <div className="text-slate-400 text-left md:text-right pl-4 md:pl-0">
-            Khung Đánh giá Năng lực Giáo dục Phổ thông 2018 • Bộ GD&ĐT
+      {/* Sư phạm Footer (Hiển thị khi đang ở không gian học tập / quản trị) */}
+      {currentView !== 'landing' && (
+        <footer className="no-print mt-12 py-6 bg-white border-t border-slate-200 text-xs text-slate-500">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span className="font-semibold text-slate-700">MathDiagnostic AI</span>
+                <span>—</span>
+                <span>Hệ thống Đánh giá Thích ứng và Chẩn đoán Vùng trũng Kiến thức Toán THPT</span>
+              </div>
+              <div className="text-slate-600 font-medium pl-4">
+                Thông tin liên hệ: Thầy Hồ Sỹ Long, SĐT 0943278804
+              </div>
+            </div>
+
+            <div className="text-slate-400 text-left md:text-right pl-4 md:pl-0">
+              Khung Đánh giá Năng lực Giáo dục Phổ thông 2018 • Bộ GD&ĐT
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }
