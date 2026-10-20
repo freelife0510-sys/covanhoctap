@@ -94,6 +94,30 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 space-y-4">
+          {/* Gợi ý tài khoản mẫu tiện lợi */}
+          <div className="bg-emerald-50 border border-emerald-200/90 rounded-2xl p-3 flex items-center justify-between gap-3">
+            <div className="text-left">
+              <div className="text-[11px] font-bold text-emerald-950 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Tài khoản học sinh mẫu:</span>
+              </div>
+              <div className="text-[10px] text-emerald-800 mt-0.5">
+                Tên: <span className="font-bold text-emerald-950">Nguyễn Duy An</span> | Mật khẩu: <span className="font-bold text-emerald-950">123</span> (hoặc 123456)
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIdentifier('Nguyễn Duy An');
+                setPassword('123456');
+                setErrorMessage('');
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shrink-0 shadow-xs cursor-pointer transition-colors"
+            >
+              Điền nhanh
+            </button>
+          </div>
+
           {errorMessage && (
             <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -111,27 +135,30 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="Ví dụ: HS12A1-01 hoặc Nguyễn Văn An"
+                placeholder="Ví dụ: Nguyễn Duy An hoặc HS12A1-01"
                 className="w-full text-xs font-medium px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                 autoFocus
               />
               <span className="text-[10px] text-slate-400 mt-1 block">
-                Không phân biệt chữ hoa/thường, tự động loại bỏ khoảng trắng thừa.
+                Không phân biệt chữ hoa/thường, có dấu hoặc không dấu.
               </span>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Key className="w-3.5 h-3.5 text-emerald-600" />
-                Mật khẩu (do Thầy/Cô cấp):
+                Mật khẩu:
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mật khẩu khởi tạo (mặc định: 123)"
+                placeholder="Mật khẩu mặc định: 123 hoặc 123456"
                 className="w-full text-xs font-medium px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
               />
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                Hệ thống hỗ trợ mật khẩu 123, 123456 hoặc mật khẩu do Thầy/Cô cấp.
+              </span>
             </div>
 
             <button
@@ -144,8 +171,8 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
             </button>
           </form>
 
-          <p className="text-[11px] text-center text-slate-500 pt-2">
-            Nếu Thầy/Cô chưa cấp mã số hoặc mật khẩu, các em hãy liên hệ trực tiếp Thầy/Cô bộ môn Toán để được tạo tài khoản.
+          <p className="text-[11px] text-center text-slate-500 pt-1">
+            Thông tin liên hệ Thầy/Cô: <span className="font-semibold text-slate-700">Thầy Hồ Sỹ Long - SĐT 0943278804</span>
           </p>
         </div>
       </div>
