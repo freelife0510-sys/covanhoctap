@@ -15,7 +15,34 @@ function isTrueMathExpression(tex: string): boolean {
   const trimmed = tex.trim();
   if (!trimmed) return false;
 
-  // 1. Kiểm tra tiếng Việt trước tiên: Nếu có >= 2 từ tiếng Việt có dấu -> Chắc chắn là văn bản thường
+  // 1. Nếu chứa bất kỳ lệnh LaTeX nào (\int, \frac, \sqrt, \mathbb, \vec, \alpha...) -> Chắc chắn là công thức toán học
+  if (trimmed.includes('\\')) {
+    return true;
+  }
+
+  // 2. Nếu chứa các toán tử toán học đặc thù
+  if (
+    trimmed.includes('^') ||
+    trimmed.includes('_') ||
+    trimmed.includes('=') ||
+    trimmed.includes('<') ||
+    trimmed.includes('>') ||
+    trimmed.includes('+') ||
+    trimmed.includes('-') ||
+    trimmed.includes('/') ||
+    trimmed.includes('*') ||
+    trimmed.includes('(') ||
+    trimmed.includes(')')
+  ) {
+    return true;
+  }
+
+  // 3. Nếu là biến đơn hoặc số đơn giản (ví dụ x, y, 10, a, b, x_1)
+  if (/^[a-zA-Z0-9\s,\.\'\"]+$/.test(trimmed) && trimmed.length <= 25) {
+    return true;
+  }
+
+  // 4. Nếu chứa >= 2 từ tiếng Việt có dấu mà không có toán tử -> Là văn bản thường
   const words = trimmed.split(/\s+/);
   const vietnameseAccentedWords = words.filter((w) =>
     /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(w)
@@ -24,42 +51,44 @@ function isTrueMathExpression(tex: string): boolean {
     return false;
   }
 
-  // 2. Nếu có >= 4 từ cách nhau bởi khoảng trắng mà không chứa cấu trúc khối LaTeX chuyên sâu
-  if (words.length >= 4 && !trimmed.includes('\\begin') && !trimmed.includes('\\frac') && !trimmed.includes('\\pmatrix')) {
-    return false;
-  }
-
-  // 3. Nếu chứa các ký hiệu toán học đặc thù
-  if (
-    trimmed.includes('\\') ||
-    trimmed.includes('^') ||
-    trimmed.includes('_') ||
-    trimmed.includes('=') ||
-    trimmed.includes('+') ||
-    trimmed.includes('-') ||
-    trimmed.includes('*') ||
-    trimmed.includes('/') ||
-    trimmed.includes('<') ||
-    trimmed.includes('>') ||
-    trimmed.includes('{') ||
-    trimmed.includes('}') ||
-    trimmed.includes('\\ge') ||
-    trimmed.includes('\\le') ||
-    trimmed.includes('\\sqrt') ||
-    trimmed.includes('\\frac') ||
-    trimmed.includes('\\infty') ||
-    trimmed.includes('\\nearrow') ||
-    trimmed.includes('\\searrow')
-  ) {
-    return true;
-  }
-
-  // 4. Nếu là biến đơn hoặc số đơn giản (ví dụ $x$, $y$, $10$, $a$, $b$, $x_1$)
-  if (/^[a-zA-Z0-9\s,\.\'\"]+$/.test(trimmed) && trimmed.length <= 15) {
-    return true;
-  }
-
   return true;
+}
+
+/**
+ * Tự động đóng gói các biểu thức LaTeX trần chưa được bao bọc bởi dấu $ (ví dụ \int_1^5 f(x) dx = 10, \mathbb{R})
+ */
+function autoWrapRawLatexExpressions(text: string): string {
+  if (!text || !text.includes('\\')) return text;
+
+  // Tách text theo các khối đã có $...$ hoặc $$...$$ để chỉ xử lý phần văn bản ngoài $
+  const tokens = text.split(/(\$\$[\s\S]*?\$\$|\$[^\$]+?\$)/g);
+  return tokens
+    .map((part) => {
+      // Nếu là khối $...$ hoặc $$...$$ đã có sẵn thì giữ nguyên
+      if (part.startsWith('$')) return part;
+
+      // Nếu không có ký tự \ thì giữ nguyên
+      if (!part.includes('\\')) return part;
+
+      // Nhận diện các cụm công thức LaTeX trần: bắt đầu bằng \ và kéo dài qua các ký hiệu toán học
+      // Ví dụ: \int_1^5 f(x) dx = 10, \mathbb{R}, \frac{a}{b}, \sqrt{x+1}
+      let processed = part;
+
+      // 1. Xử lý các tích phân trần: \int... dx (= number)?
+      processed = processed.replace(
+        /(\\int[_^0-9a-zA-Z\\{}]*\s+[a-zA-Z0-9()_+\-*\/\\^\{\}\s]+?dx(?:\s*=\s*[-+]?[0-9a-zA-Z\\{}.]+)?)/g,
+        '$$$1$$'
+      );
+
+      // 2. Xử lý \mathbb{...}, \mathcal{...}, \vec{...}, \sqrt{...}, \frac{...}{...}
+      processed = processed.replace(
+        /(?<!\$)\\(mathbb|mathcal|vec|sqrt|frac|alpha|beta|gamma|delta|pi|theta|lambda|sigma|omega|infty|sum|prod|lim|ne|le|ge|approx|in|subset|cup|cap|times|cdot|pm|mp|to|implies|iff)(\{[^}]*\}|_[0-9a-zA-Z]+|\^[0-9a-zA-Z]+)?(?!\$)/g,
+        '$$$&$$'
+      );
+
+      return processed;
+    })
+    .join('');
 }
 
 /**
@@ -141,15 +170,16 @@ function renderParagraphWithMath(
   text: string,
   keyPrefix: string
 ): React.ReactNode[] {
+  const normalizedText = autoWrapRawLatexExpressions(text);
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   const regex = /(\$\$[\s\S]*?\$\$|\$[^\$]+?\$)/g;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(text)) !== null) {
+  while ((match = regex.exec(normalizedText)) !== null) {
     const matchIndex = match.index;
     if (matchIndex > lastIndex) {
-      const textChunk = text.substring(lastIndex, matchIndex);
+      const textChunk = normalizedText.substring(lastIndex, matchIndex);
       parts.push(...renderFormattedInlineText(textChunk, `${keyPrefix}-txt-${lastIndex}`));
     }
 
@@ -172,8 +202,8 @@ function renderParagraphWithMath(
     lastIndex = matchIndex + token.length;
   }
 
-  if (lastIndex < text.length) {
-    const remainingText = text.substring(lastIndex);
+  if (lastIndex < normalizedText.length) {
+    const remainingText = normalizedText.substring(lastIndex);
     parts.push(...renderFormattedInlineText(remainingText, `${keyPrefix}-txt-end`));
   }
 
@@ -396,9 +426,9 @@ function MarkdownTableBlock({ rawBlock, blockKey }: { rawBlock: string; blockKey
 export const MathRenderer: React.FC<MathRendererProps> = ({ content, className = '', inline = false }) => {
   if (!content) return null;
 
-  // Nếu là inline và không chứa công thức
-  if (inline && !content.includes('$')) {
-    return <span className={`inline-block ${className}`}>{renderFormattedInlineText(content, 'inline-clean')}</span>;
+  // Nếu là inline
+  if (inline) {
+    return <span className={`inline-block align-baseline ${className}`}>{renderParagraphWithMath(content, 'inline-math')}</span>;
   }
 
   // Tách dòng để xử lý bảng markdown, danh sách, tiêu đề
