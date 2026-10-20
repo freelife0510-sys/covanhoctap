@@ -121,54 +121,50 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* ========================================================= */}
-          {/* PHẦN GIỮA: KHI Ở GIAO DIỆN CÁ NHÂN (HỌC SINH / GIÁO VIÊN)   */}
-          {/* GIỮ NGUYÊN BỘ CHUYỂN ROLE ĐẶC TRƯNG NHƯ PHIÊN BẢN TRƯỚC    */}
+          {/* PHẦN GIỮA:                                                */}
+          {/* - CHƯA ĐĂNG NHẬP: Hiển thị Chế độ Giáo viên & Học sinh để  */}
+          {/*   lựa chọn đăng nhập.                                     */}
+          {/* - ĐÃ ĐĂNG NHẬP RỒI: Ẩn hoàn toàn, không hiển thị nữa.     */}
           {/* ========================================================= */}
-          {!isLanding ? (
-            <div className="bg-slate-100 p-1 rounded-xl border border-slate-200 flex items-center gap-1">
+          {!authSession?.isAuthenticated ? (
+            <div className="hidden md:flex items-center gap-2">
               <button
-                onClick={() => onNavigate('student')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  currentRole === 'student'
-                    ? 'bg-white text-emerald-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                onClick={onOpenStudentLogin}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Đăng nhập Chế độ Học sinh"
               >
                 <GraduationCap className="w-4 h-4 text-emerald-600" />
-                <span className="hidden sm:inline">Chế độ Học sinh</span>
-                <span className="sm:hidden">Học sinh</span>
+                <span>Chế độ Học sinh</span>
               </button>
-
               <button
-                onClick={() => onNavigate('teacher')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  currentRole === 'teacher'
-                    ? 'bg-white text-teal-800 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                onClick={onOpenTeacherLogin}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Đăng nhập Chế độ Giáo viên"
               >
                 <UserCheck className="w-4 h-4 text-teal-600" />
-                <span className="hidden sm:inline">Chế độ Giáo viên</span>
-                <span className="sm:hidden">Giáo viên</span>
+                <span>Chế độ Giáo viên</span>
               </button>
             </div>
           ) : (
-            /* Khi ở Trang bìa: Nút chuyển nhanh vào không gian làm việc */
-            <div className="hidden md:flex items-center gap-2">
-              <button
-                onClick={() => onNavigate('student')}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <GraduationCap className="w-4 h-4 text-emerald-600" />
-                <span>Không gian Học sinh</span>
-              </button>
-              <button
-                onClick={() => onNavigate('teacher')}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <UserCheck className="w-4 h-4 text-teal-600" />
-                <span>Bảng điều khiển Thầy Cô</span>
-              </button>
+            /* Khi đã đăng nhập rồi: Chỉ hiển thị tên không gian làm việc hiện tại, KHÔNG hiển thị 2 chế độ nữa */
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold border ${
+                currentRole === 'teacher'
+                  ? 'bg-teal-50 text-teal-900 border-teal-200'
+                  : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+              }`}>
+                {currentRole === 'teacher' ? (
+                  <>
+                    <UserCheck className="w-3.5 h-3.5 text-teal-600" />
+                    <span>Không Gian Quản Trị Giáo Viên</span>
+                  </>
+                ) : (
+                  <>
+                    <GraduationCap className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Không Gian Học Sinh & Cố Vấn AI</span>
+                  </>
+                )}
+              </span>
             </div>
           )}
 
@@ -306,24 +302,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <span>Thông tin tài khoản</span>
                     </button>
 
-                    {/* Mục 2: Về Trang bìa */}
-                    {!isLanding && (
-                      <button
-                        onClick={() => {
-                          setShowUserDropdown(false);
-                          onNavigate('landing');
-                        }}
-                        className="w-full px-4 py-2.5 text-left flex items-center gap-2.5 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
-                      >
-                        <Home className="w-4 h-4 text-slate-500" />
-                        <span>Về Trang bìa giới thiệu</span>
-                      </button>
-                    )}
-
                     {/* Divider */}
                     <div className="my-1 border-t border-slate-100"></div>
 
-                    {/* Mục 3: ĐĂNG XUẤT (Về ngay nội dung trang bìa) */}
+                    {/* Mục 2: ĐĂNG XUẤT (Về ngay nội dung trang bìa) */}
                     <button
                       onClick={() => {
                         setShowUserDropdown(false);
@@ -332,7 +314,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className="w-full px-4 py-2.5 text-left flex items-center gap-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                     >
                       <LogOut className="w-4 h-4 text-rose-500" />
-                      <span>Đăng xuất tài khoản</span>
+                      <span>Đăng xuất</span>
                     </button>
                   </div>
                 )}
