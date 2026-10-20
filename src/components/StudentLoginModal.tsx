@@ -189,7 +189,7 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
 
             <div className="space-y-1.5">
               {[
-                { code: 'HS12A1-01', name: 'Nguyễn Văn An', pass: '123', tag: 'Lớp 12A1' },
+                { code: 'HS12A1-01', name: 'Nguyễn Duy An', pass: '123', tag: 'Lớp 12A1' },
                 { code: 'HS12A1-02', name: 'Trần Thị Mai', pass: '123', tag: 'Lớp 12A1' },
                 { code: 'HS12A1-03', name: 'Lê Hoàng Nam', pass: '123', tag: 'Lớp 12A1' },
               ].map((st) => (

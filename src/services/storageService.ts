@@ -72,7 +72,7 @@ export function createSampleDataForTeacher(teacher: Teacher): {
     {
       id: 'HS12A1-01',
       studentCode: 'HS12A1-01',
-      name: 'Nguyễn Văn An',
+      name: 'Nguyễn Duy An',
       classId: sampleClassId,
       className: sampleClass.name,
       teacherId: teacher.id,

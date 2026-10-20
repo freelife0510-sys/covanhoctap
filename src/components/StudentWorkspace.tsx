@@ -63,7 +63,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
     {
       id: 'welcome-msg',
       sender: 'assistant',
-      text: `Xin chào **${student.name || 'em'}**! Thầy/Cô và Cố vấn AI sẵn sàng đồng hành cùng em trong môn Toán THPT (Chuẩn GDPT 2018).\n\nEm có thể:\n1. **Gõ câu hỏi** hoặc dạng bài toán chưa biết cách làm.\n2. **Tải lên bài tập đã giải** (ảnh chữ viết tay, file Word \`.docx\`, file PDF).\n3. Yêu cầu **ra bài tập tự động** để rèn luyện củng cố.\n\nKết quả chẩn đoán và hướng dẫn sẽ được xuất bản thành **Tờ Phiếu A4 bên phải** để em đọc và tải về file **Word (.docx) tích hợp MathType**!`,
+      text: `Xin chào **${student.name || 'Nguyễn Duy An'}**! Thầy/Cô và Cố vấn AI sẵn sàng đồng hành cùng em trong môn Toán THPT.\n\nEm có thể:\n1. **Gõ câu hỏi** hoặc dạng bài toán chưa biết cách làm.\n2. **Tải lên bài tập đã giải** (ảnh chữ viết tay, file Word \`.docx\`, file PDF) để cố vấn AI hỗ trợ bạn.`,
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -78,7 +78,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
     // Khởi tạo một mẫu A4 ban đầu
     return {
       title: 'Phiếu Học Tập & Chẩn Đoán Sư Phạm GDPT 2018',
-      studentName: student.name || 'Nguyễn Văn An',
+      studentName: student.name || 'Nguyễn Duy An',
       studentId: student.id || 'HS12A1-01',
       className: student.className || 'Lớp 12A1 (Toán THPT)',
       teacherName: student.teacherName || 'Bộ môn Toán THPT',
@@ -127,6 +127,20 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages, isProcessing]);
+
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length > 0 && prev[0].id === 'welcome-msg') {
+        const updated = [...prev];
+        updated[0] = {
+          ...updated[0],
+          text: `Xin chào **${student.name || 'Nguyễn Duy An'}**! Thầy/Cô và Cố vấn AI sẵn sàng đồng hành cùng em trong môn Toán THPT.\n\nEm có thể:\n1. **Gõ câu hỏi** hoặc dạng bài toán chưa biết cách làm.\n2. **Tải lên bài tập đã giải** (ảnh chữ viết tay, file Word \`.docx\`, file PDF) để cố vấn AI hỗ trợ bạn.`,
+        };
+        return updated;
+      }
+      return prev;
+    });
+  }, [student.name]);
 
   // Xử lý đính kèm tệp
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

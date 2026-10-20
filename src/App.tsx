@@ -350,15 +350,20 @@ export default function App() {
 
       {/* Sư phạm Footer */}
       <footer className="no-print mt-12 py-6 bg-white border-t border-slate-200 text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span className="font-semibold text-slate-700">MathDiagnostic AI</span>
-            <span>—</span>
-            <span>Hệ thống Đánh giá Thích ứng và Chẩn đoán Vùng trũng Kiến thức Toán THPT</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span className="font-semibold text-slate-700">MathDiagnostic AI</span>
+              <span>—</span>
+              <span>Hệ thống Đánh giá Thích ứng và Chẩn đoán Vùng trũng Kiến thức Toán THPT</span>
+            </div>
+            <div className="text-slate-600 font-medium pl-4">
+              Thông tin liên hệ: Thầy Hồ Sỹ Long, SĐT 0943278804
+            </div>
           </div>
 
-          <div className="text-slate-400">
+          <div className="text-slate-400 text-left md:text-right pl-4 md:pl-0">
             Khung Đánh giá Năng lực Giáo dục Phổ thông 2018 • Bộ GD&ĐT
           </div>
         </div>
