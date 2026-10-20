@@ -25,6 +25,7 @@ import { parseUploadedFile, ParsedFileResult } from '../utils/fileParser.ts';
 import { A4DocumentExportData } from '../utils/wordExport.ts';
 import A4DocumentViewer from './A4DocumentViewer.tsx';
 import MathRenderer from './MathRenderer.tsx';
+import SelfStudyModule from './SelfStudyModule.tsx';
 
 interface ChatMessage {
   id: string;
@@ -74,6 +75,9 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
   const [attachedFile, setAttachedFile] = useState<ParsedFileResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('Đang phân tích...');
+
+  // Workspace feature mode: 'advisor' (Cố vấn AI + A4) hoặc 'self_study' (Tự học theo SGK)
+  const [studentWorkspaceTab, setStudentWorkspaceTab] = useState<'advisor' | 'self_study'>('advisor');
 
   // Active A4 document data to render in the right column
   const [activeA4Data, setActiveA4Data] = useState<A4DocumentExportData | null>(() => {
@@ -318,13 +322,52 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Main Two-Column Layout: Left Chatbox (5 cols) | Right A4 Document (7 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
-        {/* ==================================================== */}
-        {/* CỘT TRÁI: KHUNG CHATBOX TƯƠNG TÁC ĐA PHƯƠNG THỨC */}
-        {/* ==================================================== */}
-        <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[760px] overflow-hidden">
+      {/* Quick Feature Switcher Tabs */}
+      <div className="flex items-center gap-2.5 border-b border-slate-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setStudentWorkspaceTab('advisor')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+            studentWorkspaceTab === 'advisor'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-700/20'
+              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Bot className="w-4 h-4" />
+          <span>Cố Vấn AI & Chẩn Đoán Bài Tập (Tờ Phiếu A4)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStudentWorkspaceTab('self_study')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+            studentWorkspaceTab === 'self_study'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-700/20'
+              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Tự Học Theo SGK (Khối 10 - 11 - 12)</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-900">
+            Mới
+          </span>
+        </button>
+      </div>
+
+      {/* VIEW 1: TỰ HỌC THEO SGK (LÍ THUYẾT & 3 DẠNG BÀI TẬP) */}
+      {studentWorkspaceTab === 'self_study' ? (
+        <SelfStudyModule
+          apiKey={apiKey}
+          selectedModel={selectedModel}
+        />
+      ) : (
+        /* VIEW 2: CỐ VẤN AI & TRÌNH SOẠN THẢO A4 */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          
+          {/* ==================================================== */}
+          {/* CỘT TRÁI: KHUNG CHATBOX TƯƠNG TÁC ĐA PHƯƠNG THỨC */}
+          {/* ==================================================== */}
+          <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[760px] overflow-hidden">
           
           {/* Chatbox Header */}
           <div className="bg-slate-900 text-white p-4 flex items-center justify-between border-b border-slate-800">
@@ -564,6 +607,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
         </div>
 
       </div>
+      )}
     </div>
   );
 };
