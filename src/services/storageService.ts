@@ -366,7 +366,7 @@ export function loginTeacherWithGoogle(
     teacher = {
       id: teacherId,
       email: email.trim().toLowerCase(),
-      name: name?.trim() || `ThS. ${email.split('@')[0]}`,
+      name: name?.trim() || `Giáo viên ${email.split('@')[0]}`,
       school: school?.trim() || 'Trường THPT Chuẩn GDPT 2018',
       avatar: avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
       classList: [],

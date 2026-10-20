@@ -26,7 +26,8 @@ import {
 import Navbar from './components/Navbar.tsx';
 import StudentWorkspace from './components/StudentWorkspace.tsx';
 import TeacherDashboard from './components/TeacherDashboard.tsx';
-import LoginModal from './components/LoginModal.tsx';
+import TeacherGoogleLoginModal from './components/TeacherGoogleLoginModal.tsx';
+import StudentLoginModal from './components/StudentLoginModal.tsx';
 
 // Thanh lọc triệt để cache trình duyệt cũ nếu còn sót dữ liệu "giaovien.toan"
 try {
@@ -67,14 +68,8 @@ export default function App() {
   });
 
   const [currentRole, setCurrentRole] = useState<Role>(authSession.role || 'teacher');
-  const [showLoginModal, setShowLoginModal] = useState(false);
-
-  const handleRoleChange = (newRole: Role) => {
-    setCurrentRole(newRole);
-    if (newRole === 'teacher') {
-      setShowLoginModal(true);
-    }
-  };
+  const [showTeacherLoginModal, setShowTeacherLoginModal] = useState(false);
+  const [showStudentLoginModal, setShowStudentLoginModal] = useState(false);
 
   // Active Teacher Profile & Workspace Data
   const [teacher, setTeacher] = useState<Teacher>(() => {
@@ -125,6 +120,18 @@ export default function App() {
   const [apiKey, setApiKey] = useState<string>(() => {
     return localStorage.getItem('gemini_api_key') || '';
   });
+
+  // Chuyển đổi Role: Bấm Giáo viên mở Đăng nhập Google, Bấm Học sinh mở Đăng nhập Học sinh
+  const handleRoleChange = (newRole: Role) => {
+    setCurrentRole(newRole);
+    if (newRole === 'teacher') {
+      setShowTeacherLoginModal(true);
+      setShowStudentLoginModal(false);
+    } else {
+      setShowStudentLoginModal(true);
+      setShowTeacherLoginModal(false);
+    }
+  };
 
   // Đồng bộ role khi authSession thay đổi
   useEffect(() => {
@@ -199,45 +206,48 @@ export default function App() {
   // Đăng xuất hoặc Đổi tài khoản
   const handleLogout = () => {
     clearAuthSession();
-    setShowLoginModal(true);
+    if (currentRole === 'teacher') {
+      setShowTeacherLoginModal(true);
+    } else {
+      setShowStudentLoginModal(true);
+    }
   };
 
-  // Đăng nhập thành công từ Login Modal
-  const handleLoginSuccess = (role: Role, user: Teacher | StudentAccount) => {
-    if (role === 'teacher') {
-      const teacherUser = user as Teacher;
-      setTeacher(teacherUser);
-      const loadedClasses = getClassesForTeacher(teacherUser.id);
-      const loadedStudents = getStudentsForTeacher(teacherUser.id);
-      const loadedSubmissions = getSubmissionsForTeacher(teacherUser.id);
+  // Đăng nhập Giáo viên bằng Google thành công
+  const handleTeacherLoginSuccess = (teacherUser: Teacher) => {
+    setTeacher(teacherUser);
+    const loadedClasses = getClassesForTeacher(teacherUser.id);
+    const loadedStudents = getStudentsForTeacher(teacherUser.id);
+    const loadedSubmissions = getSubmissionsForTeacher(teacherUser.id);
 
-      setClasses(loadedClasses);
-      setStudents(loadedStudents);
-      setSubmissions(loadedSubmissions);
-      if (loadedStudents.length > 0) {
-        setCurrentStudent(loadedStudents[0]);
-      }
-
-      setAuthSession({
-        role: 'teacher',
-        teacherUser,
-        studentUser: null,
-        isAuthenticated: true,
-      });
-      setCurrentRole('teacher');
-    } else {
-      const studentUser = user as StudentAccount;
-      setCurrentStudent(studentUser);
-      setAuthSession({
-        role: 'student',
-        teacherUser: null,
-        studentUser,
-        isAuthenticated: true,
-      });
-      setCurrentRole('student');
+    setClasses(loadedClasses);
+    setStudents(loadedStudents);
+    setSubmissions(loadedSubmissions);
+    if (loadedStudents.length > 0) {
+      setCurrentStudent(loadedStudents[0]);
     }
 
-    setShowLoginModal(false);
+    setAuthSession({
+      role: 'teacher',
+      teacherUser,
+      studentUser: null,
+      isAuthenticated: true,
+    });
+    setCurrentRole('teacher');
+    setShowTeacherLoginModal(false);
+  };
+
+  // Đăng nhập Học sinh thành công
+  const handleStudentLoginSuccess = (studentUser: StudentAccount) => {
+    setCurrentStudent(studentUser);
+    setAuthSession({
+      role: 'student',
+      teacherUser: null,
+      studentUser,
+      isAuthenticated: true,
+    });
+    setCurrentRole('student');
+    setShowStudentLoginModal(false);
   };
 
   // Sao lưu JSON
@@ -281,7 +291,16 @@ export default function App() {
         onSaveApiKey={handleSaveApiKey}
         authSession={authSession}
         onLogout={handleLogout}
-        onOpenLoginModal={() => setShowLoginModal(true)}
+        onOpenTeacherLogin={() => {
+          setShowTeacherLoginModal(true);
+          setShowStudentLoginModal(false);
+        }}
+        onOpenStudentLogin={() => {
+          setShowStudentLoginModal(true);
+          setShowTeacherLoginModal(false);
+        }}
+        teacherUser={teacher}
+        studentUser={currentStudent}
       />
 
       {/* Main Content Area */}
@@ -315,12 +334,18 @@ export default function App() {
         )}
       </main>
 
-      {/* Login Modal */}
-      <LoginModal
-        isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
-        initialRole={currentRole}
-        onLoginSuccess={handleLoginSuccess}
+      {/* Modal Đăng nhập Giáo viên bằng Google (hoàn toàn tách biệt) */}
+      <TeacherGoogleLoginModal
+        isOpen={showTeacherLoginModal}
+        onClose={() => setShowTeacherLoginModal(false)}
+        onLoginSuccess={handleTeacherLoginSuccess}
+      />
+
+      {/* Modal Đăng nhập Học sinh (hoàn toàn tách biệt) */}
+      <StudentLoginModal
+        isOpen={showStudentLoginModal}
+        onClose={() => setShowStudentLoginModal(false)}
+        onLoginSuccess={handleStudentLoginSuccess}
       />
 
       {/* Sư phạm Footer */}
