@@ -22,6 +22,7 @@ export interface DiagnosticResult {
   followUpProblems: FollowUpProblem[];
   keyInsight?: string;
   pedagogicalAdviceForTeacher?: string;
+  detailedSolution?: string;
 }
 
 /**
@@ -80,6 +81,37 @@ export function analyzeMathSubmissionLocal(
         ],
         keyInsight: 'Mô hình hóa bài toán thành hàm doanh thu bậc hai $R(x) = (8 + 0.1x)(100 - x) = -0.1x^2 + 2x + 800$ trên đoạn $[0; 100]$. Đạo hàm $R\'(x) = -0.2x + 2 = 0 \\iff x = 10$. Người quản lí nên đặt giá thuê là $8 + 0.1(10) = 9$ triệu đồng/tháng để doanh thu lớn nhất đạt 810 triệu đồng.',
         pedagogicalAdviceForTeacher: 'Dạng bài toán mô hình hóa thực tiễn lớp 12 GDPT 2018. Cần rèn cho học sinh kỹ năng chuyển đổi ngôn ngữ thực tế sang ngôn ngữ hàm số giải tích và không được nhầm lẫn giữa ẩn số $x$ (số lần tăng giá) với giá thuê cuối cùng.',
+        detailedSolution: `### BÀI GIẢI CHI TIẾT & BẢNG BIẾN THIÊN CHUẨN MỰC:
+
+**1. Chọn ẩn số và thiết lập mô hình toán học:**
+Gọi $x$ là số lần tăng giá thêm $100.000$ đồng ($x \\in \\mathbb{N}, 0 \\le x \\le 100$).
+* Giá cho thuê mỗi căn hộ một tháng sau khi tăng là:
+$$P(x) = 8 + 0{,}1x \\quad (\\text{triệu đồng/tháng})$$
+* Do cứ mỗi lần tăng $100.000$ đồng thì có thêm $1$ căn hộ bị bỏ trống, nên số căn hộ được thuê là:
+$$Q(x) = 100 - x \\quad (\\text{căn hộ})$$
+
+**2. Hàm số doanh thu mục tiêu:**
+Tổng số tiền người quản lí thu được từ việc cho thuê căn hộ mỗi tháng là:
+$$R(x) = P(x) \\cdot Q(x) = (8 + 0{,}1x)(100 - x) = -0{,}1x^2 + 2x + 800 \\quad (\\text{triệu đồng})$$
+
+**3. Khảo sát hàm số để tìm giá trị lớn nhất:**
+Xét hàm số $R(x) = -0{,}1x^2 + 2x + 800$ trên đoạn $[0; 100]$.
+Đạo hàm cấp một:
+$$R'(x) = -0{,}2x + 2$$
+Cho $R'(x) = 0 \\iff -0{,}2x + 2 = 0 \\iff x = 10 \\in [0; 100]$.
+
+**Bảng biến thiên:**
+
+| $x$ | $0$ | | $10$ | | $100$ |
+|---|---|---|:---:|---|---|
+| $R'(x)$ | | $+$ | $0$ | $-$ | |
+| $R(x)$ | $800$ | $\\nearrow$ | $810$ | $\\searrow$ | $0$ |
+
+**4. Kết luận:**
+Từ bảng biến thiên, hàm số $R(x)$ đạt giá trị lớn nhất tại $x = 10$.
+Giá thuê tối ưu của mỗi căn hộ để tổng doanh thu mỗi tháng đạt cực đại là:
+$$P(10) = 8 + 0{,}1 \\times 10 = 9 \\text{ triệu đồng/tháng}.$$
+Khi đó doanh thu lớn nhất đạt $810$ triệu đồng/tháng (với $90$ căn hộ được thuê).`,
         followUpProblems: [
           {
             id: 601,
@@ -124,6 +156,29 @@ export function analyzeMathSubmissionLocal(
         ],
         keyInsight: 'Học sinh nhầm dấu khi tính $ad - bc$: lấy $2(1) - 1(1) = 1$ thay vì $2(1) - (-1)(1) = 3$.',
         pedagogicalAdviceForTeacher: 'Lỗi sai dấu đại số cơ bản trong quy tắc nhân chéo định thức cấp hai $\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}$. Cần cho học sinh viết tường minh các ngoặc âm khi tính toán.',
+        detailedSolution: `### BÀI GIẢI CHI TIẾT & BẢNG BIẾN THIÊN CHUẨN MỰC:
+
+**1. Tập xác định:**
+Hàm số $y = \\frac{2x - 1}{x + 1}$ có tập xác định:
+$$D = \\mathbb{R} \\setminus \\{-1\\}.$$
+
+**2. Đạo hàm và chiều biến thiên:**
+Áp dụng quy tắc tính nhanh đạo hàm hàm phân thức bậc nhất trên bậc nhất:
+$$y' = \\frac{ad - bc}{(cx + d)^2} = \\frac{2 \\cdot 1 - (-1) \\cdot 1}{(x + 1)^2} = \\frac{2 + 1}{(x + 1)^2} = \\frac{3}{(x + 1)^2}$$
+Vì $3 > 0$ và $(x + 1)^2 > 0$ với mọi $x \\ne -1$, nên:
+$$y' > 0, \\quad \\forall x \\in D.$$
+Do đó, hàm số đồng biến trên các khoảng $(-\\infty; -1)$ và $(-1; +\\infty)$.
+
+**3. Giới hạn và đường tiệm cận:**
+* $\\lim_{x \\to +\\infty} y = \\lim_{x \\to -\\infty} y = 2 \\implies y = 2$ là tiệm cận ngang.
+* $\\lim_{x \\to -1^+} y = -\\infty$, $\\lim_{x \\to -1^-} y = +\\infty \\implies x = -1$ là tiệm cận đứng.
+
+**4. Bảng biến thiên:**
+
+| $x$ | $-\\infty$ | | $-1$ | | $+\\infty$ |
+|---|---|---|:---:|---|---|
+| $y'$ | | $+$ | $\\|$ | $+$ | |
+| $y$ | $2$ $\\nearrow$ | $+\\infty$ | $\\|$ | $-\\infty$ $\\nearrow$ | $2$ |`,
         followUpProblems: [
           {
             id: 201,

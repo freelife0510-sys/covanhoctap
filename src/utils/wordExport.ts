@@ -10,6 +10,7 @@ export interface A4DocumentExportData {
   timestamp?: string;
   problemText: string;
   solutionText?: string;
+  detailedSolution?: string;
   isCorrect?: boolean;
   errorCategory?: string;
   keyInsight?: string;
@@ -79,6 +80,7 @@ export function exportA4ToWordDocument(data: A4DocumentExportData): void {
 
   const convertedProblem = convertTextFormulasToMathML(data.problemText);
   const convertedSolution = data.solutionText ? convertTextFormulasToMathML(data.solutionText) : '';
+  const convertedDetailedSolution = data.detailedSolution ? convertTextFormulasToMathML(data.detailedSolution) : '';
   const convertedKeyInsight = data.keyInsight ? convertTextFormulasToMathML(data.keyInsight) : '';
   const convertedTheory = data.theorySummary ? convertTextFormulasToMathML(data.theorySummary) : '';
   const convertedAdvice = data.pedagogicalAdvice ? convertTextFormulasToMathML(data.pedagogicalAdvice) : '';
@@ -278,6 +280,19 @@ export function exportA4ToWordDocument(data: A4DocumentExportData): void {
             </h3>
             <div style="background-color: #fafafa; border: 1pt solid #e2e8f0; padding: 8pt 10pt; margin: 6pt 0;">
               ${convertedSolution}
+            </div>
+          `
+            : ''
+        }
+
+        ${
+          convertedDetailedSolution
+            ? `
+            <h3 style="color: #0f172a; font-size: 13pt; margin-top: 12pt; margin-bottom: 4pt; border-bottom: 1.5pt solid #059669; padding-bottom: 2pt;">
+              HƯỚNG DẪN GIẢI CHI TIẾT & BẢNG BIẾN THIÊN CHUẨN MỰC
+            </h3>
+            <div style="background-color: #f0fdf4; border: 1pt solid #86efac; padding: 10pt 12pt; margin: 6pt 0; border-radius: 6pt;">
+              ${convertedDetailedSolution}
             </div>
           `
             : ''

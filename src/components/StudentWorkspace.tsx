@@ -478,6 +478,23 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
                     <MathRenderer content={msg.text} />
                   </div>
 
+                  {/* Nút xem chi tiết lời giải & bảng biến thiên trên tờ phiếu A4 */}
+                  {msg.a4Data && msg.sender === 'assistant' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveA4Data(msg.a4Data!);
+                        const a4El = document.getElementById('a4-viewer-panel');
+                        if (a4El) a4El.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Xem Lời giải & Bảng biến thiên (Phiếu A4)</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-emerald-600" />
+                    </button>
+                  )}
+
                   <span
                     className={`text-[9px] block text-right mt-1.5 ${
                       msg.sender === 'student' ? 'text-emerald-200' : 'text-slate-400'
@@ -599,7 +616,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
         {/* ==================================================== */}
         {/* CỘT PHẢI: TRÌNH SOẠN THẢO & PHIẾU HỌC TẬP A4 CHUẨN MỰC */}
         {/* ==================================================== */}
-        <div className="lg:col-span-7">
+        <div id="a4-viewer-panel" className="lg:col-span-7">
           <A4DocumentViewer
             data={activeA4Data}
             onPrint={() => window.print()}

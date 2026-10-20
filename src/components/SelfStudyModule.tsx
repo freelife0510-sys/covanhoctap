@@ -249,9 +249,12 @@ Trả về ĐÚNG định dạng JSON theo schema:
       {/* ========================================================================= */}
       <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
               Lớp {selectedGrade}
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-900 border border-blue-200">
+              SGK Kết Nối Tri Thức Với Cuộc Sống
             </span>
             <span className="text-xs text-slate-400">•</span>
             <span className="text-xs font-semibold text-slate-600 truncate max-w-xs sm:max-w-md">
@@ -903,8 +906,8 @@ Trả về ĐÚNG định dạng JSON theo schema:
                   <h3 className="text-sm sm:text-base font-bold text-slate-900">
                     Chọn Bài Học Môn Toán THPT (GDPT 2018)
                   </h3>
-                  <p className="text-[11px] text-slate-500">
-                    SGK Kết Nối Tri Thức & Cánh Diều • Khối 10, 11, 12
+                  <p className="text-[11px] text-emerald-800 font-semibold">
+                    Duy nhất Bộ sách: Kết Nối Tri Thức Với Cuộc Sống • Khối 10, 11, 12
                   </p>
                 </div>
               </div>

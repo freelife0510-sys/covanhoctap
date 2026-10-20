@@ -68,7 +68,10 @@ export const A4DocumentViewer: React.FC<A4DocumentViewerProps> = ({
     md += `* **Giáo viên:** ${data.teacherName || 'Bộ môn Toán'}\n\n`;
     md += `## I. ĐỀ BÀI TOÁN\n${data.problemText}\n\n`;
     if (data.solutionText) {
-      md += `## II. BÀI GIẢI CỦA HỌC SINH\n${data.solutionText}\n\n`;
+      md += `## BÀI GIẢI CỦA HỌC SINH\n${data.solutionText}\n\n`;
+    }
+    if (data.detailedSolution) {
+      md += `## HƯỚNG DẪN GIẢI CHI TIẾT & BẢNG BIẾN THIÊN CHUẨN MỰC\n${data.detailedSolution}\n\n`;
     }
     if (data.errorCategory) {
       md += `> ⚠️ **Vùng trũng kiến thức phát hiện:** ${data.errorCategory}\n\n`;
@@ -243,10 +246,28 @@ export const A4DocumentViewer: React.FC<A4DocumentViewerProps> = ({
           <div className="space-y-2">
             <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-slate-900 border-b border-emerald-600 pb-1 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-teal-600"></span>
-              II. BÀI GIẢI CỦA HỌC SINH
+              BÀI LÀM / BÀI GIẢI CỦA HỌC SINH
             </h3>
             <div className="p-3.5 rounded-2xl bg-white border border-slate-200 text-slate-800 font-mono text-xs whitespace-pre-wrap">
               <MathRenderer content={data.solutionText} />
+            </div>
+          </div>
+        )}
+
+        {/* HƯỚNG DẪN GIẢI CHI TIẾT & BẢNG BIẾN THIÊN CHUẨN MỰC (TOÀN BỘ CÂU TRẢ LỜI ĐẶT TẠI ĐÂY) */}
+        {data.detailedSolution && (
+          <div className="space-y-2">
+            <h3 className="font-sans font-bold text-xs uppercase tracking-wider text-emerald-950 border-b-2 border-emerald-600 pb-1 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                II. HƯỚNG DẪN GIẢI CHI TIẾT & BẢNG BIẾN THIÊN CHUẨN MỰC
+              </span>
+              <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded-full">
+                Sư phạm GDPT 2018
+              </span>
+            </h3>
+            <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50/40 border border-emerald-200/90 text-slate-900 font-sans text-xs sm:text-[13px] leading-relaxed shadow-2xs">
+              <MathRenderer content={data.detailedSolution} />
             </div>
           </div>
         )}

@@ -111,9 +111,10 @@ QUY TRÌNH XỬ LÝ TOÁN HỌC ĐẶC BIỆT CỦA CỐ VẤN AI:
 3. ĐỊNH DẠNG TOÁN HỌC:
    - Sử dụng LaTeX chuẩn: $...$ cho công thức nội dòng, $$...$$ cho công thức riêng dòng.
 
-4. BẮT BUỘC TRẢ VỀ JSON THEO SCHEMA:
+4. BẮT BUỘC TRẢ VỀ JSON THEO SCHEMA (LƯU Ý ĐẶC BIỆT: TOÀN BỘ LỜI GIẢI CHI TIẾT & BẢNG BIẾN THIÊN NẰM TRONG detailedSolution ĐỂ HIỂN THỊ TRÊN TỜ PHIẾU A4 BÊN PHẢI; chatReply CHỈ LÀ LỜI CHÀO GỌI Ý NGẮN GỌN):
 {
-  "chatReply": "Văn bản phản hồi học sinh bằng Markdown, có công thức LaTeX $...$, giải thích chi tiết, sư phạm ấm áp",
+  "chatReply": "Lời dặn ngắn gọn (1-2 câu) sư phạm ấm áp của Thầy/Cô, hướng dẫn học sinh xem chi tiết lời giải và bảng biến thiên trên Tờ Phiếu A4 bên phải",
+  "detailedSolution": "Toàn bộ bài giải chi tiết, chặt chẽ từng bước chuẩn SGK Kết nối tri thức với cuộc sống (GDPT 2018). NẾU BÀI TOÁN LIÊN QUAN ĐẾN ĐẠO HÀM HOẶC KHẢO SÁT HÀM SỐ, BẮT BUỘC VẼ BẢNG BIẾN THIÊN ĐỦ 3 DÒNG ($x$, $y'$, $y$) BẰNG CÚ PHÁP BẢNG MARKDOWN: \n| $x$ | $-\\\\infty$ | $x_1$ | $+\\\\infty$ |\n|---|:---:|:---:|:---:|\n| $y'$ | | $+$ | $0$ | $-$ | |\n| $y$ | $y_0$ | $\\\\nearrow$ | $y_1$ | $\\\\searrow$ | $y_2$ |\n",
   "isCorrect": boolean hoặc null,
   "errorCategory": string hoặc null,
   "keyInsight": "Bản chất toán học và điểm mấu chốt then chốt",
@@ -232,6 +233,18 @@ export async function processStudentChatInteraction(
           initialHint: p.initialHint || '',
         }));
 
+        const detailedSol =
+          parsed.detailedSolution ||
+          (parsed.chatReply && parsed.chatReply.length > 120 ? parsed.chatReply : undefined);
+
+        const friendlyChatReply = parsed.detailedSolution
+          ? parsed.chatReply ||
+            'Thầy/Cô và Cố vấn AI đã phân tích chi tiết bài toán, xây dựng bảng biến thiên chuẩn mực và ghi chú phương pháp trên **Tờ Phiếu A4 bên phải**. Em hãy xem chi tiết bên phải nhé!'
+          : parsed.chatReply && parsed.chatReply.length > 120
+          ? 'Thầy/Cô và Cố vấn AI đã phân tích chi tiết bài toán, xây dựng bảng biến thiên chuẩn mực và ghi chú phương pháp trên **Tờ Phiếu A4 bên phải**. Em hãy xem chi tiết bên phải nhé!'
+          : parsed.chatReply ||
+            'Cố vấn AI đã phân tích câu hỏi và lập Phiếu học tập A4 bên cạnh cho em!';
+
         const a4Data: A4DocumentExportData = {
           title: 'Phiếu Học Tập & Chẩn Đoán Sư Phạm GDPT 2018',
           studentName: studentInfo?.name || 'Học sinh',
@@ -240,6 +253,7 @@ export async function processStudentChatInteraction(
           teacherName: 'Cố vấn Sư phạm AI & Giáo viên Bộ môn',
           problemText: userMessage || attachedFileText || 'Câu hỏi bài tập Toán',
           solutionText: attachedFileText && attachedFileText !== userMessage ? attachedFileText : undefined,
+          detailedSolution: detailedSol,
           isCorrect: parsed.isCorrect ?? undefined,
           errorCategory: parsed.errorCategory || undefined,
           keyInsight: parsed.keyInsight || 'Nắm vững bản chất định lý và tập xác định.',
@@ -251,7 +265,7 @@ export async function processStudentChatInteraction(
         };
 
         return {
-          chatReply: parsed.chatReply || 'Cố vấn AI đã phân tích câu hỏi và lập Phiếu học tập A4 bên cạnh cho em!',
+          chatReply: friendlyChatReply,
           a4Data,
           isCorrect: parsed.isCorrect ?? undefined,
           errorCategory: parsed.errorCategory || undefined,
@@ -294,6 +308,7 @@ export async function processStudentChatInteraction(
     teacherName: 'Cố vấn Sư phạm AI & Giáo viên Bộ môn',
     problemText: fullPrompt,
     solutionText: attachedFileText || undefined,
+    detailedSolution: localEval.diagnosticResult.detailedSolution,
     isCorrect: localEval.isCorrect,
     errorCategory: localEval.errorCategory,
     keyInsight: localEval.diagnosticResult.keyInsight,
