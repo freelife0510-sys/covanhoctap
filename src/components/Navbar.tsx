@@ -5,6 +5,7 @@ import {
   Teacher,
   StudentAccount
 } from '../types/index.ts';
+import { AVAILABLE_AI_MODELS } from '../services/geminiService.ts';
 import { 
   GraduationCap, 
   UserCheck, 
@@ -20,7 +21,8 @@ import {
   LogIn, 
   ChevronDown, 
   Home, 
-  ArrowRight
+  ArrowRight,
+  Cpu
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -29,6 +31,8 @@ interface NavbarProps {
   onNavigate: (view: 'landing' | 'student' | 'teacher') => void;
   apiKey: string;
   onSaveApiKey: (key: string) => void;
+  selectedModel?: string;
+  onSaveModel?: (model: string) => void;
   authSession?: AuthSession;
   onLogout?: () => void;
   onOpenTeacherLogin?: () => void;
@@ -44,6 +48,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigate,
   apiKey,
   onSaveApiKey,
+  selectedModel = 'gemini-2.5-pro',
+  onSaveModel,
   authSession,
   onLogout,
   onOpenTeacherLogin,
@@ -54,6 +60,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [inputKey, setInputKey] = useState(apiKey);
+  const [inputModel, setInputModel] = useState<string>(() => {
+    const isStandard = AVAILABLE_AI_MODELS.some((m) => m.id === selectedModel);
+    return isStandard ? selectedModel : 'custom';
+  });
+  const [customModelText, setCustomModelText] = useState<string>(() => {
+    const isStandard = AVAILABLE_AI_MODELS.some((m) => m.id === selectedModel);
+    return isStandard ? '' : selectedModel;
+  });
   const [showPedagogyModal, setShowPedagogyModal] = useState(false);
   const [savedMessage, setSavedMessage] = useState(false);
 
@@ -63,6 +77,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const userDropdownRef = useRef<HTMLDivElement>(null);
   const loginDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setInputKey(apiKey);
+  }, [apiKey]);
+
+  useEffect(() => {
+    const isStandard = AVAILABLE_AI_MODELS.some((m) => m.id === selectedModel);
+    setInputModel(isStandard ? selectedModel : 'custom');
+    if (!isStandard) setCustomModelText(selectedModel);
+  }, [selectedModel]);
 
   // Đóng dropdown khi nhấp ra ngoài
   useEffect(() => {
@@ -330,14 +354,29 @@ export const Navbar: React.FC<NavbarProps> = ({
               <HelpCircle className="w-4 h-4" />
             </button>
 
-            {/* Gemini API Key */}
+            {/* Gemini API Key & Model Selector Trigger */}
             <button
               onClick={() => setShowKeyModal(true)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium transition-colors cursor-pointer"
             >
-              <Key className="w-3.5 h-3.5 text-amber-500" />
+              <Cpu className="w-3.5 h-3.5 text-emerald-600" />
               <span className="hidden xl:inline">
-                {apiKey ? 'Gemini Active' : 'Cấu hình AI'}
+                {apiKey ? (
+                  <span className="flex items-center gap-1.5 font-bold text-emerald-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    {selectedModel === 'gemini-2.0-flash'
+                      ? 'Gemini 2.0 Flash'
+                      : selectedModel === 'gemini-1.5-pro'
+                      ? 'Gemini 1.5 Pro'
+                      : selectedModel === 'gemini-1.5-flash'
+                      ? 'Gemini 1.5 Flash'
+                      : selectedModel && selectedModel !== 'gemini-2.5-pro'
+                      ? selectedModel
+                      : 'Gemini 2.5 Pro'}
+                  </span>
+                ) : (
+                  'Cấu hình AI'
+                )}
               </span>
             </button>
 
@@ -345,18 +384,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </header>
 
-      {/* Gemini API Key Configuration Modal */}
+      {/* Gemini API Key & Model Selection Modal */}
       {showKeyModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-2xl bg-amber-50 text-amber-600">
-                  <Key className="w-5 h-5" />
+                <div className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-700">
+                  <Cpu className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Cấu hình Google Gemini AI</h3>
-                  <p className="text-[11px] text-slate-500">Multimodal Vision & Phân tích Sư phạm</p>
+                  <h3 className="text-sm font-bold text-slate-900">Kết nối Sâu Google Gemini AI</h3>
+                  <p className="text-[11px] text-slate-500">Tùy chọn Model Sư phạm Toán THPT GDPT 2018</p>
                 </div>
               </div>
               <button
@@ -368,24 +407,95 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             <div className="space-y-4">
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Nhập Gemini API Key từ <strong>Google AI Studio</strong> để kích hoạt phân tích ảnh bài giải và thị giác máy tính:
-              </p>
-
+              {/* 1. Chọn Model */}
               <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                  Chọn Mô hình AI (AI Model):
+                </label>
+                <div className="space-y-2">
+                  {AVAILABLE_AI_MODELS.map((model) => {
+                    const isSelected = inputModel === model.id;
+                    return (
+                      <label
+                        key={model.id}
+                        className={`block p-2.5 rounded-2xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-50/70 shadow-xs'
+                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="ai_model"
+                              value={model.id}
+                              checked={isSelected}
+                              onChange={() => setInputModel(model.id)}
+                              className="text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="text-xs font-bold text-slate-900">{model.name}</span>
+                          </div>
+                          {model.badge && (
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                model.recommended
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {model.badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 pl-5 mt-0.5 leading-relaxed">
+                          {model.description}
+                        </p>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {/* Nếu chọn Custom Model */}
+                {inputModel === 'custom' && (
+                  <div className="mt-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Nhập tên Model tùy chọn (ví dụ: gemini-3.1-pro-preview, gemini-3.8-flash...):
+                    </label>
+                    <input
+                      type="text"
+                      value={customModelText}
+                      onChange={(e) => setCustomModelText(e.target.value)}
+                      placeholder="gemini-3.1-pro-preview"
+                      className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Nhập API Key */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-amber-500" />
+                  Gemini API Key (từ Google AI Studio):
+                </label>
                 <input
                   type="password"
                   value={inputKey}
                   onChange={(e) => setInputKey(e.target.value)}
-                  placeholder="AIzaSy..."
-                  className="w-full text-xs font-mono px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Dán API Key dạng AIzaSy..."
+                  className="w-full text-xs font-mono px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                 />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  API Key được lưu an toàn trên trình duyệt của bạn để kết nối trực tiếp với máy chủ Google.
+                </span>
               </div>
 
               {savedMessage && (
                 <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-600" />
-                  Đã lưu API Key vào trình duyệt!
+                  Đã lưu cấu hình Model và API Key thành công!
                 </div>
               )}
 
@@ -397,7 +507,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Đóng
                 </button>
                 <button
-                  onClick={handleSaveKey}
+                  onClick={() => {
+                    onSaveApiKey(inputKey);
+                    const chosenModel = inputModel === 'custom' ? (customModelText.trim() || 'gemini-2.5-pro') : inputModel;
+                    if (onSaveModel) onSaveModel(chosenModel);
+                    setSavedMessage(true);
+                    setTimeout(() => {
+                      setSavedMessage(false);
+                      setShowKeyModal(false);
+                    }, 800);
+                  }}
                   className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-colors cursor-pointer"
                 >
                   Lưu cấu hình

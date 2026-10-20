@@ -97,10 +97,19 @@ export default function App() {
     return authSession.studentUser || null;
   });
 
-  // API Key State
+  // API Key State & Selected Model
   const [apiKey, setApiKey] = useState<string>(() => {
     return localStorage.getItem('gemini_api_key') || '';
   });
+
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    return localStorage.getItem('gemini_selected_model') || 'gemini-2.5-pro';
+  });
+
+  const handleSaveModel = (model: string) => {
+    setSelectedModel(model);
+    localStorage.setItem('gemini_selected_model', model);
+  };
 
   // Chuyển đổi giữa các màn hình: Kiểm tra bảo mật chặt chẽ trước khi vào
   const handleNavigate = (view: 'landing' | 'student' | 'teacher') => {
@@ -301,6 +310,8 @@ export default function App() {
         onNavigate={handleNavigate}
         apiKey={apiKey}
         onSaveApiKey={handleSaveApiKey}
+        selectedModel={selectedModel}
+        onSaveModel={handleSaveModel}
         authSession={authSession}
         onLogout={handleLogout}
         onOpenTeacherLogin={() => {
@@ -334,6 +345,7 @@ export default function App() {
         ) : currentView === 'student' && currentStudent ? (
           <StudentWorkspace
             apiKey={apiKey}
+            selectedModel={selectedModel}
             student={currentStudent}
             onUpdateStudent={handleUpdateSingleStudent}
             onNewSubmission={handleNewSubmission}

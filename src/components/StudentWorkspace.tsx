@@ -37,6 +37,7 @@ interface ChatMessage {
 
 interface StudentWorkspaceProps {
   apiKey?: string;
+  selectedModel?: string;
   student: StudentAccount;
   onUpdateStudent: (student: StudentAccount) => void;
   onNewSubmission: (submission: MathSubmission) => void;
@@ -54,6 +55,7 @@ const QUICK_PROMPTS = [
 
 export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
   apiKey = '',
+  selectedModel = 'gemini-2.5-pro',
   student,
   onUpdateStudent,
   onNewSubmission,
@@ -202,7 +204,8 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
           name: student.name || 'Học sinh',
           id: student.id || 'HS-MAT',
           className: student.className || 'Toán THPT',
-        }
+        },
+        selectedModel
       );
 
       // Cập nhật A4 Document ở cột bên phải
@@ -334,8 +337,9 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
                   Cố vấn Sư phạm Toán AI
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 </h3>
-                <p className="text-[10px] text-slate-400">
-                  Multimodal Vision • Hỗ trợ Text, Ảnh, Word (.docx), PDF
+                <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                  <span className="text-emerald-400 font-semibold">{selectedModel || 'Gemini 2.5 Pro'}</span>
+                  <span>• GDPT 2018 Multimodal Vision</span>
                 </p>
               </div>
             </div>
