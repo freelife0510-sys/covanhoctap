@@ -103,7 +103,7 @@ export default function App() {
   });
 
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem('gemini_selected_model') || 'gemini-2.5-pro';
+    return localStorage.getItem('gemini_selected_model') || 'gemini-3.8-flash';
   });
 
   const handleSaveModel = (model: string) => {

@@ -48,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigate,
   apiKey,
   onSaveApiKey,
-  selectedModel = 'gemini-2.5-pro',
+  selectedModel = 'gemini-3.8-flash',
   onSaveModel,
   authSession,
   onLogout,
@@ -364,15 +364,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {apiKey ? (
                   <span className="flex items-center gap-1.5 font-bold text-emerald-800">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    {selectedModel === 'gemini-2.0-flash'
+                    {selectedModel === 'gemini-3.8-flash'
+                      ? 'Gemini 3.8 Flash'
+                      : selectedModel === 'gemini-2.0-flash'
                       ? 'Gemini 2.0 Flash'
+                      : selectedModel === 'gemini-2.5-pro'
+                      ? 'Gemini 2.5 Pro'
                       : selectedModel === 'gemini-1.5-pro'
                       ? 'Gemini 1.5 Pro'
                       : selectedModel === 'gemini-1.5-flash'
                       ? 'Gemini 1.5 Flash'
-                      : selectedModel && selectedModel !== 'gemini-2.5-pro'
+                      : selectedModel
                       ? selectedModel
-                      : 'Gemini 2.5 Pro'}
+                      : 'Gemini 3.8 Flash'}
                   </span>
                 ) : (
                   'Cấu hình AI'

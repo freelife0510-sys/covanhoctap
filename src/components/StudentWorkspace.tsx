@@ -55,7 +55,7 @@ const QUICK_PROMPTS = [
 
 export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
   apiKey = '',
-  selectedModel = 'gemini-2.5-pro',
+  selectedModel = 'gemini-3.8-flash',
   student,
   onUpdateStudent,
   onNewSubmission,
@@ -338,7 +338,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 </h3>
                 <p className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                  <span className="text-emerald-400 font-semibold">{selectedModel || 'Gemini 2.5 Pro'}</span>
+                  <span className="text-emerald-400 font-semibold">{selectedModel || 'Gemini 3.8 Flash'}</span>
                   <span>• GDPT 2018 Multimodal Vision</span>
                 </p>
               </div>

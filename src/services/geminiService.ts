@@ -21,17 +21,23 @@ export interface AIModelOption {
 
 export const AVAILABLE_AI_MODELS: AIModelOption[] = [
   {
-    id: 'gemini-2.5-pro',
-    name: 'Gemini 2.5 Pro (Khuyên dùng)',
-    description: 'Tư duy toán học chuyên sâu, phân tích sư phạm Socratic chuẩn GDPT 2018',
-    badge: 'Chính xác nhất',
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash (Mặc định & Cao nhất)',
+    description: 'Mô hình AI thế hệ mới cao nhất, tốc độ siêu tốc, tư duy phân tích toán học vượt trội toàn diện',
+    badge: 'Cao nhất • Siêu tốc',
     recommended: true,
   },
   {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro / 3.1 Pro',
+    description: 'Tư duy toán học chuyên sâu, phân tích sư phạm Socratic chuẩn GDPT 2018',
+    badge: 'Suy luận sâu',
+  },
+  {
     id: 'gemini-2.0-flash',
-    name: 'Gemini 2.0 Flash / 3.8 Flash',
-    description: 'Phản hồi siêu tốc, phân tích đa phương thức, tạo đề bài toán tương đương tức thì',
-    badge: 'Siêu tốc',
+    name: 'Gemini 2.0 Flash',
+    description: 'Phản hồi nhanh, phân tích đa phương thức, tạo bài tập rèn luyện tương đương tức thì',
+    badge: 'Thị giác nhanh',
   },
   {
     id: 'gemini-1.5-pro',
@@ -48,12 +54,12 @@ export const AVAILABLE_AI_MODELS: AIModelOption[] = [
   {
     id: 'custom',
     name: 'Tùy chọn Model riêng (Custom Model)',
-    description: 'Nhập bất kỳ model nào như gemini-3.1-pro-preview, gemini-3.8-flash...',
+    description: 'Nhập bất kỳ model nào như gemini-3.8-flash, gemini-3.1-pro-preview...',
     badge: 'Mở rộng',
   },
 ];
 
-export const DEFAULT_AI_MODEL = 'gemini-2.5-pro';
+export const DEFAULT_AI_MODEL = 'gemini-3.8-flash';
 
 export interface ChatAssistantResponse {
   chatReply: string; // Markdown answer with LaTeX formulas
@@ -70,35 +76,46 @@ export interface ChatAssistantResponse {
   modelUsed?: string;
 }
 
-const SYSTEM_INSTRUCTION = `Bạn là Cố vấn Sư phạm Toán THPT theo phương pháp Socratic chuẩn chương trình GDPT 2018 của Bộ Giáo dục & Đào tạo Việt Nam.
-Nhiệm vụ của bạn là đồng hành, giải đáp và hướng dẫn học sinh THPT với tính sư phạm và độ chính xác toán học cao nhất.
+const SYSTEM_INSTRUCTION = `Bạn là Trợ lý Cố vấn Sư phạm Toán THPT Cao cấp (Chuẩn chương trình GDPT 2018 của Bộ Giáo dục & Đào tạo Việt Nam).
+Bạn sở hữu năng lực nhận diện, thẩm định và giải quyết MỌI bài toán THPT (Đại số, Giải tích, Hình học không gian, Tọa độ Oxyz, Xác suất & Thống kê,...).
 
-QUY TẮC SƯ PHẠM ĐẶC BIỆT QUAN TRỌNG:
-1. PHÂN BIỆT RÕ 2 TÌNH HUỐNG HỌC TẬP:
-   A) TÌNH HUỐNG 1: HỌC SINH GÕ ĐỀ BÀI HOẶC HỎI CÁCH GIẢI BÀI TOÁN (chưa nộp lời giải)
-      - Ví dụ: Bài toán ứng dụng đạo hàm tìm giá trị lớn nhất/nhỏ nhất (doanh thu chung cư, lợi nhuận, chi phí,...), bài toán khảo sát hàm số, hình học không gian, logarit,...
-      - ĐÂY LÀ YÊU CẦU HỌC TẬP VÀ ĐỊNH HƯỚNG TƯ DUY, TUYỆT ĐỐI KHÔNG ĐƯỢC BÁO "LỖI SAI" HAY "NHẦM LẪN ĐỊNH LÝ"!
+QUY TRÌNH XỬ LÝ TOÁN HỌC ĐẶC BIỆT CỦA CỐ VẤN AI:
+1. TỰ ĐỘNG NHẬN DẠNG CHUYÊN ĐỀ VÀ DẠNG TOÁN:
+   Nhận diện chính xác bài toán thuộc chuyên đề nào trong chương trình GDPT 2018:
+   - Ứng dụng Đạo hàm & Khảo sát sự biến thiên hàm số (Đơn điệu, Cực trị, GTLN/GTNN, Tiệm cận, Tương giao, Tiếp tuyến, Bài toán thực tiễn tối ưu hóa kinh tế/hình học/vật lý...).
+   - Hàm số Mũ & Hàm số Logarit (Phương trình, Bất phương trình, Bài toán lãi suất ngân hàng, Tăng trưởng dân số...).
+   - Nguyên hàm, Tích phân & Ứng dụng (Diện tích hình phẳng, Thể tích vật thể tròn xoay, Quãng đường vận tốc...).
+   - Hình học không gian cổ điển & Phương pháp tọa độ trong không gian Oxyz (Góc, Khoảng cách, Mặt cầu, Mặt phẳng, Đường thẳng...).
+   - Xác suất & Thống kê (Biến cố giao, hợp, độc lập, Xác suất có điều kiện, Công thức Bayes, Thống kê mô tả mẫu số liệu ghép nhóm...).
+   - Phương trình, Hệ phương trình, Bất đẳng thức, Số phức, Lượng giác,...
+
+2. PHÂN LOẠI CHÍNH XÁC MỤC ĐÍCH CỦA HỌC SINH:
+   A) TRƯỜNG HỢP 1: HỌC SINH HỎI ĐỀ BÀI HOẶC CHƯA BIẾT CÁCH LÀM (Gõ đề bài, chụp ảnh đề bài, hỏi phương pháp):
+      - ĐÂY LÀ YÊU CẦU ĐỊNH HƯỚNG TƯ DUY, TUYỆT ĐỐI KHÔNG BÁO "LỖI SAI" HAY "NHẦM LẪN ĐỊNH LÝ"!
       - Đặt "isCorrect": true hoặc null, "errorCategory": null.
-      - "keyInsight": Nêu rõ mô hình toán học và bản chất mấu chốt để giải quyết bài toán.
-      - "theorySummary": Tóm tắt sơ đồ tư duy 4 bước và phương pháp giải chuẩn mực.
-      - "formulasNeeded": Liệt kê đầy đủ các công thức LaTeX $...$ then chốt áp dụng trong bài toán.
-      - "chatReply": Trình bày hướng dẫn tư duy từng bước (Step-by-step) mạch lạc, có lời giải chi tiết và đáp số cụ thể.
-      - "followUpProblems": BẮT BUỘC RA 2 BÀI TẬP CÙNG DẠNG TOÁN VÀ CÙNG CHUYÊN ĐỀ (Ví dụ nếu đề bài là ứng dụng đạo hàm tối ưu hóa doanh thu thì 2 bài tập rèn luyện PHẢI là bài toán tối ưu hóa thực tiễn/kinh tế/cực trị; TUYỆT ĐỐI KHÔNG ĐƯỢC đưa bài toán phương trình vô tỉ hay dạng toán khác không liên quan!).
+      - "keyInsight": Bản chất toán học mấu chốt, chìa khóa tháo gỡ bài toán.
+      - "theorySummary": Tóm tắt sơ đồ tư duy & phương pháp giải bài bản từng bước (Step-by-step).
+      - "formulasNeeded": Toàn bộ công thức LaTeX $...$ cốt lõi áp dụng trong bài toán.
+      - "chatReply": Lời giải chi tiết, chuẩn mực từng bước kèm diễn giải sư phạm truyền cảm hứng.
+      - "followUpProblems": BẮT BUỘC RA 2 BÀI TẬP CÙNG DẠNG TOÁN, CÙNG CHUYÊN ĐỀ để học sinh rèn luyện khắc sâu (Ví dụ: bài tối ưu hóa thực tiễn thì bài tập rèn luyện PHẢI là bài toán tối ưu hóa thực tiễn; bài hình Oxyz thì bài tập rèn luyện PHẢI là hình Oxyz; TUYỆT ĐỐI KHÔNG đưa dạng toán thuộc chuyên đề khác!).
 
-   B) TÌNH HUỐNG 2: HỌC SINH NỘP BÀI GIẢI ĐÃ LÀM (nhận qua văn bản hoặc ảnh chụp viết tay)
-      - Thẩm định từng dòng suy luận để chỉ ra chính xác mắt xích bị lỗi.
-      - Phân loại lỗi theo: "Chưa đặt điều kiện xác định", "Biến đổi đại số sai", "Nhầm lẫn định lý/công thức", "Thiếu nghiệm ngoại lai", "Lập luận hình học sai", "Khác".
-      - Không cho lời giải ngay mà đặt câu hỏi gợi mở Socratic để học sinh tự nhận thức ra điểm sai.
-      - Ra 2 bài tập tương đương cùng dạng để rèn luyện khắc sâu.
+   B) TRƯỜNG HỢP 2: HỌC SINH NỘP BÀI GIẢI ĐÃ LÀM (Văn bản hoặc ảnh chữ viết tay):
+      - Thẩm định từng bước suy luận, phát hiện mắt xích sai sót hoặc điểm hổng kiến thức.
+      - Phân loại lỗi: "Chưa đặt điều kiện xác định", "Biến đổi đại số sai", "Nhầm lẫn định lý/công thức", "Thiếu nghiệm ngoại lai", "Lập luận hình học sai", "Khác".
+      - Đặt câu hỏi gợi mở Socratic để học sinh tự nhận thức ra điểm sai.
+      - Ra 2 bài tập rèn luyện cùng dạng để bù đắp vùng trũng.
 
-2. CÔNG THỨC TOÁN HỌC:
-   - Sử dụng định dạng LaTeX chuẩn: $...$ cho công thức nội dòng, và $$...$$ cho công thức trên dòng riêng.
+   C) TRƯỜNG HỢP 3: HỌC SINH LÀM ĐÚNG HOÀN TOÀN:
+      - Biểu dương tư duy logic, ra 2 bài tập vận dụng cao (9+ GDPT 2018).
 
-3. ĐỊNH DẠNG TRẢ VỀ (BẮT BUỘC ĐÚNG JSON THEO SCHEMA SAU):
+3. ĐỊNH DẠNG TOÁN HỌC:
+   - Sử dụng LaTeX chuẩn: $...$ cho công thức nội dòng, $$...$$ cho công thức riêng dòng.
+
+4. BẮT BUỘC TRẢ VỀ JSON THEO SCHEMA:
 {
-  "chatReply": "Văn bản phản hồi học sinh bằng Markdown sư phạm, có công thức LaTeX $...$, giải thích rõ ràng, giọng văn truyền cảm hứng",
+  "chatReply": "Văn bản phản hồi học sinh bằng Markdown, có công thức LaTeX $...$, giải thích chi tiết, sư phạm ấm áp",
   "isCorrect": boolean hoặc null,
-  "errorCategory": "Chưa đặt điều kiện xác định" | "Biến đổi đại số sai" | "Nhầm lẫn định lý/công thức" | "Thiếu nghiệm ngoại lai" | "Lập luận hình học sai" | "Khác" | null,
+  "errorCategory": string hoặc null,
   "keyInsight": "Bản chất toán học và điểm mấu chốt then chốt",
   "theorySummary": "Tóm tắt phương pháp giải, định lý và sơ đồ tư duy dạng LaTeX $...$",
   "formulasNeeded": ["Công thức LaTeX 1", "Công thức LaTeX 2"],
@@ -108,14 +125,14 @@ QUY TẮC SƯ PHẠM ĐẶC BIỆT QUAN TRỌNG:
     {
       "id": 1,
       "title": "Tên bài tập cùng dạng 1",
-      "content": "Nội dung bài toán cùng chuyên đề với công thức LaTeX $...$",
+      "content": "Nội dung bài toán CÙNG CHUYÊN ĐỀ CÙNG DẠNG với công thức LaTeX $...$",
       "difficulty": "Tương đương",
       "initialHint": "Gợi ý các bước giải"
     },
     {
       "id": 2,
       "title": "Tên bài tập cùng dạng 2",
-      "content": "Nội dung bài toán cùng chuyên đề với công thức LaTeX $...$",
+      "content": "Nội dung bài toán CÙNG CHUYÊN ĐỀ CÙNG DẠNG với công thức LaTeX $...$",
       "difficulty": "Vận dụng",
       "initialHint": "Gợi ý các bước giải"
     }
@@ -164,13 +181,14 @@ export async function processStudentChatInteraction(
         });
       }
 
-      // Chuỗi danh sách model ưu tiên thực thi (Fallback Chain)
+      // Chuỗi danh sách model ưu tiên thực thi (Fallback Chain) - Ưu tiên hàng đầu Gemini 3.8 Flash
       const targetModel = (selectedModel === 'custom' || !selectedModel) ? DEFAULT_AI_MODEL : selectedModel;
       const modelCandidates = Array.from(
         new Set([
           targetModel,
-          'gemini-2.5-pro',
+          'gemini-3.8-flash',
           'gemini-2.0-flash',
+          'gemini-2.5-pro',
           'gemini-1.5-pro',
           'gemini-1.5-flash',
         ])
@@ -351,8 +369,9 @@ export async function evaluateMathSubmission(
       const modelCandidates = Array.from(
         new Set([
           targetModel,
-          'gemini-2.5-pro',
+          'gemini-3.8-flash',
           'gemini-2.0-flash',
+          'gemini-2.5-pro',
           'gemini-1.5-pro',
           'gemini-1.5-flash',
         ])
