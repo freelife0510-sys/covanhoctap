@@ -374,13 +374,11 @@ export function loginTeacherWithGoogle(
     };
     saveTeacherProfile(teacher);
 
-    // Tự động khởi tạo dữ liệu mẫu cho giáo viên mới
-    const sample = createSampleDataForTeacher(teacher);
-    teacher.classList = sample.classes;
+    teacher.classList = [];
     saveTeacherProfile(teacher);
-    saveClassesForTeacher(teacher.id, sample.classes);
-    saveStudentsForTeacher(teacher.id, sample.students);
-    saveSubmissionsForTeacher(teacher.id, sample.submissions);
+    saveClassesForTeacher(teacher.id, []);
+    saveStudentsForTeacher(teacher.id, []);
+    saveSubmissionsForTeacher(teacher.id, []);
   } else {
     // Cập nhật tên/trường nếu có
     if (name && name !== teacher.name) teacher.name = name;

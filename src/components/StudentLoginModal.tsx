@@ -35,10 +35,6 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Lấy danh sách học sinh mẫu có sẵn
-  const allStudents = getAllGlobalStudents();
-  const demoStudents = allStudents.slice(0, 4);
-
   // Xử lý nộp form đăng nhập
   const handleLogin = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -68,34 +64,6 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
         );
       }
     }, 300);
-  };
-
-  // Đăng nhập nhanh 1-chạm học sinh mẫu
-  const handleQuickStudentSelect = (code: string, pass: string) => {
-    setIdentifier(code);
-    setPassword(pass);
-    setErrorMessage('');
-    setIsLoading(true);
-
-    setTimeout(() => {
-      const result = loginStudentWithCredentials(code, pass);
-      setIsLoading(false);
-
-      if (result.success && result.student) {
-        onLoginSuccess(result.student);
-        onClose();
-      } else {
-        // Tự động khởi tạo giáo viên mẫu nếu chưa có dữ liệu trong hệ thống
-        loginTeacherWithGoogle('giaovien.demo@gmail.com', 'Giáo viên Bộ môn Toán', 'THPT Chuẩn GDPT 2018');
-        const retryResult = loginStudentWithCredentials(code, pass);
-        if (retryResult.success && retryResult.student) {
-          onLoginSuccess(retryResult.student);
-          onClose();
-        } else {
-          setErrorMessage('Chưa có dữ liệu học sinh mẫu. Thầy/Cô hãy đăng nhập Giáo viên trước để sinh lớp!');
-        }
-      }
-    }, 250);
   };
 
   return (
@@ -176,47 +144,8 @@ export const StudentLoginModal: React.FC<StudentLoginModalProps> = ({
             </button>
           </form>
 
-          {/* Tài khoản mẫu 1-chạm */}
-          <div className="pt-2">
-            <div className="relative py-1 mb-2">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200"></div>
-              </div>
-              <div className="relative flex justify-center text-[10px] uppercase">
-                <span className="bg-white px-2 text-slate-400 font-bold">Học sinh mẫu (Bấm 1-chạm vào ngay)</span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              {[
-                { code: 'HS12A1-01', name: 'Nguyễn Duy An', pass: '123', tag: 'Lớp 12A1' },
-                { code: 'HS12A1-02', name: 'Trần Thị Mai', pass: '123', tag: 'Lớp 12A1' },
-                { code: 'HS12A1-03', name: 'Lê Hoàng Nam', pass: '123', tag: 'Lớp 12A1' },
-              ].map((st) => (
-                <button
-                  key={st.code}
-                  type="button"
-                  onClick={() => handleQuickStudentSelect(st.code, st.pass)}
-                  disabled={isLoading}
-                  className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/70 border border-slate-200 hover:border-emerald-300 text-left flex items-center justify-between transition-all cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                      {st.code}
-                    </span>
-                    <span className="text-xs font-bold text-slate-800">{st.name}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
-                    <span>{st.tag}</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-emerald-600" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <p className="text-[11px] text-center text-slate-500 pt-1">
-            Nếu Thầy/Cô chưa cấp mật khẩu, các em hãy liên hệ trực tiếp Thầy/Cô bộ môn Toán.
+          <p className="text-[11px] text-center text-slate-500 pt-2">
+            Nếu Thầy/Cô chưa cấp mã số hoặc mật khẩu, các em hãy liên hệ trực tiếp Thầy/Cô bộ môn Toán để được tạo tài khoản.
           </p>
         </div>
       </div>

@@ -47,28 +47,17 @@ export default function App() {
   // Giao diện mở đầu: Mặc định mở Trang bìa (Landing Page) như yêu cầu
   const [currentView, setCurrentView] = useState<'landing' | 'student' | 'teacher'>('landing');
 
-  // Auth Session State
+  // Auth Session State: Mặc định chưa đăng nhập để bảo mật thông tin
   const [authSession, setAuthSession] = useState<AuthSession>(() => {
     const saved = getSavedAuthSession();
-    if (saved && saved.isAuthenticated) return saved;
-
-    const savedGoogleEmail = localStorage.getItem('google_teacher_email');
-    if (savedGoogleEmail) {
-      const { teacher } = loginTeacherWithGoogle(savedGoogleEmail);
-      return {
-        role: 'teacher',
-        teacherUser: teacher,
-        studentUser: null,
-        isAuthenticated: true,
-      };
+    if (saved && saved.isAuthenticated && (saved.teacherUser || saved.studentUser)) {
+      return saved;
     }
-
-    const { teacher } = loginTeacherWithGoogle('giaovien@gmail.com', 'Giáo viên Bộ môn Toán', 'THPT Chuẩn GDPT 2018');
     return {
-      role: 'teacher',
-      teacherUser: teacher,
+      role: 'student',
+      teacherUser: null,
       studentUser: null,
-      isAuthenticated: true,
+      isAuthenticated: false,
     };
   });
 
@@ -77,49 +66,35 @@ export default function App() {
   const [showStudentLoginModal, setShowStudentLoginModal] = useState(false);
   const [showAccountInfoModal, setShowAccountInfoModal] = useState(false);
 
-  // Active Teacher Profile & Workspace Data
-  const [teacher, setTeacher] = useState<Teacher>(() => {
-    return (
-      authSession.teacherUser || {
-        id: 'teacher_default',
-        email: 'giaovien@gmail.com',
-        name: 'Giáo viên Bộ môn Toán',
-        school: 'THPT Chuẩn GDPT 2018',
-        classList: [],
-      }
-    );
+  // Active Teacher Profile & Workspace Data (Chỉ có khi giáo viên đã đăng nhập)
+  const [teacher, setTeacher] = useState<Teacher | null>(() => {
+    return authSession.teacherUser || null;
   });
 
   const [classes, setClasses] = useState<ClassRoom[]>(() => {
-    const loaded = getClassesForTeacher(teacher.id);
-    if (loaded && loaded.length > 0) return loaded;
-    const sample = createSampleDataForTeacher(teacher);
-    saveClassesForTeacher(teacher.id, sample.classes);
-    return sample.classes;
+    if (teacher?.id) {
+      return getClassesForTeacher(teacher.id);
+    }
+    return [];
   });
 
   const [students, setStudents] = useState<StudentAccount[]>(() => {
-    const loaded = getStudentsForTeacher(teacher.id);
-    if (loaded && loaded.length > 0) return loaded;
-    const sample = createSampleDataForTeacher(teacher);
-    saveStudentsForTeacher(teacher.id, sample.students);
-    return sample.students;
+    if (teacher?.id) {
+      return getStudentsForTeacher(teacher.id);
+    }
+    return [];
   });
 
   const [submissions, setSubmissions] = useState<MathSubmission[]>(() => {
-    const loaded = getSubmissionsForTeacher(teacher.id);
-    if (loaded && loaded.length > 0) return loaded;
-    const sample = createSampleDataForTeacher(teacher);
-    saveSubmissionsForTeacher(teacher.id, sample.submissions);
-    return sample.submissions;
+    if (teacher?.id) {
+      return getSubmissionsForTeacher(teacher.id);
+    }
+    return [];
   });
 
-  // Active Student Profile (for Student Mode)
-  const [currentStudent, setCurrentStudent] = useState<StudentAccount>(() => {
-    if (authSession.studentUser) return authSession.studentUser;
-    if (students.length > 0) return students[0];
-    const sample = createSampleDataForTeacher(teacher);
-    return sample.students[0];
+  // Active Student Profile (for Student Mode - Chỉ có khi học sinh đã đăng nhập)
+  const [currentStudent, setCurrentStudent] = useState<StudentAccount | null>(() => {
+    return authSession.studentUser || null;
   });
 
   // API Key State
@@ -127,13 +102,26 @@ export default function App() {
     return localStorage.getItem('gemini_api_key') || '';
   });
 
-  // Chuyển đổi giữa các màn hình (Landing, Student, Teacher)
+  // Chuyển đổi giữa các màn hình: Kiểm tra bảo mật chặt chẽ trước khi vào
   const handleNavigate = (view: 'landing' | 'student' | 'teacher') => {
-    setCurrentView(view);
     if (view === 'student') {
+      if (!authSession.isAuthenticated || authSession.role !== 'student' || !authSession.studentUser) {
+        setShowStudentLoginModal(true);
+        setShowTeacherLoginModal(false);
+        return;
+      }
       setCurrentRole('student');
+      setCurrentView('student');
     } else if (view === 'teacher') {
+      if (!authSession.isAuthenticated || authSession.role !== 'teacher' || !authSession.teacherUser) {
+        setShowTeacherLoginModal(true);
+        setShowStudentLoginModal(false);
+        return;
+      }
       setCurrentRole('teacher');
+      setCurrentView('teacher');
+    } else {
+      setCurrentView('landing');
     }
   };
 
@@ -223,6 +211,11 @@ export default function App() {
       studentUser: null,
       isAuthenticated: false,
     });
+    setTeacher(null);
+    setClasses([]);
+    setStudents([]);
+    setSubmissions([]);
+    setCurrentStudent(null);
     setCurrentRole('student');
     setCurrentView('landing');
   };
@@ -268,6 +261,7 @@ export default function App() {
 
   // Sao lưu JSON
   const handleExportJson = () => {
+    if (!teacher) return;
     const jsonStr = exportTeacherWorkspaceJson(teacher.id);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -280,6 +274,7 @@ export default function App() {
 
   // Nhập JSON
   const handleImportJson = (jsonStr: string) => {
+    if (!teacher) return;
     const success = importTeacherWorkspaceJson(teacher.id, jsonStr);
     if (success) {
       setClasses(getClassesForTeacher(teacher.id));
@@ -336,7 +331,7 @@ export default function App() {
               setShowStudentLoginModal(false);
             }}
           />
-        ) : currentView === 'student' ? (
+        ) : currentView === 'student' && currentStudent ? (
           <StudentWorkspace
             apiKey={apiKey}
             student={currentStudent}
@@ -348,7 +343,7 @@ export default function App() {
             onUpdateNotes={handleUpdateNotes}
             onMarkResolved={handleMarkResolved}
           />
-        ) : (
+        ) : currentView === 'teacher' && teacher ? (
           <TeacherDashboard
             teacher={teacher}
             onUpdateTeacher={handleUpdateTeacher}
@@ -361,6 +356,19 @@ export default function App() {
             onMarkResolved={handleMarkResolved}
             onExportJson={handleExportJson}
             onImportJson={handleImportJson}
+          />
+        ) : (
+          <LandingPage
+            onGoToStudent={() => handleNavigate('student')}
+            onGoToTeacher={() => handleNavigate('teacher')}
+            onOpenStudentLogin={() => {
+              setShowStudentLoginModal(true);
+              setShowTeacherLoginModal(false);
+            }}
+            onOpenTeacherLogin={() => {
+              setShowTeacherLoginModal(true);
+              setShowStudentLoginModal(false);
+            }}
           />
         )}
       </main>

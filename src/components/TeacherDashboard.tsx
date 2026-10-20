@@ -445,11 +445,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
         {classes.length === 0 && (
           <button
-            onClick={handleInitSampleWorkspace}
+            onClick={handleOpenCreateClass}
             className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-all w-fit"
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-            Khởi tạo Lớp 12A1 mẫu (5 học sinh)
+            <Plus className="w-3.5 h-3.5" />
+            Tạo Lớp học đầu tiên
           </button>
         )}
       </div>

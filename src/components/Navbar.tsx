@@ -177,8 +177,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* ========================================================= */}
           <div className="flex items-center gap-2">
             
-            {/* 1. Nếu đang ở Trang bìa: Hiển thị nút "Đăng nhập" (với dropdown chọn GV hoặc HS) */}
-            {isLanding && (
+            {/* 1. Nút "Đăng nhập" (với dropdown chọn GV hoặc HS) khi chưa đăng nhập hoặc đang ở Trang bìa */}
+            {(!authSession?.isAuthenticated || isLanding) && (
               <div className="relative" ref={loginDropdownRef}>
                 <button
                   type="button"
@@ -244,98 +244,100 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* 2. Menu Tên tài khoản kèm Mũi tên (Hiển thị khi ở không gian cá nhân hoặc đã có tài khoản) */}
-            <div className="relative" ref={userDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setShowUserDropdown(!showUserDropdown)}
-                className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
-                title="Bấm vào mũi tên để xem Thông tin tài khoản hoặc Đăng xuất"
-              >
-                {/* User Avatar */}
-                <div className={`w-6 h-6 rounded-lg text-white flex items-center justify-center text-[11px] font-bold ${
-                  currentRole === 'teacher' ? 'bg-teal-700' : 'bg-emerald-600'
-                }`}>
-                  {currentRole === 'teacher'
-                    ? (currentTeacher?.name ? currentTeacher.name.charAt(0).toUpperCase() : 'G')
-                    : (currentStudent?.name ? currentStudent.name.charAt(0).toUpperCase() : 'A')}
-                </div>
-
-                {/* User Name */}
-                <span className="max-w-[110px] sm:max-w-[150px] truncate font-bold">
-                  {currentRole === 'teacher'
-                    ? (currentTeacher?.name || 'Giáo viên')
-                    : (currentStudent?.name || 'Học sinh')}
-                </span>
-
-                {/* Mũi tên (ChevronDown) */}
-                <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />
-              </button>
-
-              {/* Dropdown Menu bên cạnh Tên tài khoản */}
-              {showUserDropdown && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                  
-                  {/* Account Header info */}
-                  <div className="px-4 py-2.5 border-b border-slate-100">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block mb-0.5">
-                      {currentRole === 'teacher' ? '👨‍🏫 Quản trị Giáo viên' : '🎓 Học sinh THPT'}
-                    </span>
-                    <span className="text-xs font-bold text-slate-900 block truncate">
-                      {currentRole === 'teacher'
-                        ? (currentTeacher?.name || 'Giáo viên Bộ môn')
-                        : (currentStudent?.name || 'Nguyễn Duy An')}
-                    </span>
-                    <span className="text-[11px] text-slate-400 font-mono block truncate">
-                      {currentRole === 'teacher'
-                        ? (currentTeacher?.email || 'giaovien@gmail.com')
-                        : (currentStudent?.id ? `Mã HS: ${currentStudent.id}` : 'HS12A1-01')}
-                    </span>
+            {/* 2. Menu Tên tài khoản kèm Mũi tên (CHỈ HIỂN THỊ KHI ĐÃ ĐĂNG NHẬP THÀNH CÔNG) */}
+            {authSession?.isAuthenticated && (
+              <div className="relative" ref={userDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowUserDropdown(!showUserDropdown)}
+                  className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                  title="Bấm vào mũi tên để xem Thông tin tài khoản hoặc Đăng xuất"
+                >
+                  {/* User Avatar */}
+                  <div className={`w-6 h-6 rounded-lg text-white flex items-center justify-center text-[11px] font-bold ${
+                    currentRole === 'teacher' ? 'bg-teal-700' : 'bg-emerald-600'
+                  }`}>
+                    {currentRole === 'teacher'
+                      ? (currentTeacher?.name ? currentTeacher.name.charAt(0).toUpperCase() : 'G')
+                      : (currentStudent?.name ? currentStudent.name.charAt(0).toUpperCase() : 'H')}
                   </div>
 
-                  {/* Mục 1: Thông tin tài khoản */}
-                  <button
-                    onClick={() => {
-                      setShowUserDropdown(false);
-                      if (onOpenAccountInfo) onOpenAccountInfo();
-                    }}
-                    className="w-full px-4 py-2.5 text-left flex items-center gap-2.5 text-xs font-bold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50/70 transition-colors cursor-pointer"
-                  >
-                    <User className="w-4 h-4 text-emerald-600" />
-                    <span>Thông tin tài khoản</span>
-                  </button>
+                  {/* User Name */}
+                  <span className="max-w-[110px] sm:max-w-[150px] truncate font-bold">
+                    {currentRole === 'teacher'
+                      ? (currentTeacher?.name || 'Giáo viên')
+                      : (currentStudent?.name || 'Học sinh')}
+                  </span>
 
-                  {/* Mục 2: Về Trang bìa */}
-                  {!isLanding && (
+                  {/* Mũi tên (ChevronDown) */}
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown Menu bên cạnh Tên tài khoản */}
+                {showUserDropdown && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    
+                    {/* Account Header info */}
+                    <div className="px-4 py-2.5 border-b border-slate-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block mb-0.5">
+                        {currentRole === 'teacher' ? '👨‍🏫 Quản trị Giáo viên' : '🎓 Học sinh THPT'}
+                      </span>
+                      <span className="text-xs font-bold text-slate-900 block truncate">
+                        {currentRole === 'teacher'
+                          ? (currentTeacher?.name || 'Giáo viên Bộ môn')
+                          : (currentStudent?.name || 'Học sinh')}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-mono block truncate">
+                        {currentRole === 'teacher'
+                          ? (currentTeacher?.email || 'giaovien@gmail.com')
+                          : (currentStudent?.id ? `Mã HS: ${currentStudent.id}` : 'Học sinh')}
+                      </span>
+                    </div>
+
+                    {/* Mục 1: Thông tin tài khoản */}
                     <button
                       onClick={() => {
                         setShowUserDropdown(false);
-                        onNavigate('landing');
+                        if (onOpenAccountInfo) onOpenAccountInfo();
                       }}
-                      className="w-full px-4 py-2.5 text-left flex items-center gap-2.5 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
+                      className="w-full px-4 py-2.5 text-left flex items-center gap-2.5 text-xs font-bold text-slate-700 hover:text-emerald-700 hover:bg-emerald-50/70 transition-colors cursor-pointer"
                     >
-                      <Home className="w-4 h-4 text-slate-500" />
-                      <span>Về Trang bìa giới thiệu</span>
+                      <User className="w-4 h-4 text-emerald-600" />
+                      <span>Thông tin tài khoản</span>
                     </button>
-                  )}
 
-                  {/* Divider */}
-                  <div className="my-1 border-t border-slate-100"></div>
+                    {/* Mục 2: Về Trang bìa */}
+                    {!isLanding && (
+                      <button
+                        onClick={() => {
+                          setShowUserDropdown(false);
+                          onNavigate('landing');
+                        }}
+                        className="w-full px-4 py-2.5 text-left flex items-center gap-2.5 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
+                        <Home className="w-4 h-4 text-slate-500" />
+                        <span>Về Trang bìa giới thiệu</span>
+                      </button>
+                    )}
 
-                  {/* Mục 3: ĐĂNG XUẤT (Về ngay nội dung trang bìa) */}
-                  <button
-                    onClick={() => {
-                      setShowUserDropdown(false);
-                      if (onLogout) onLogout();
-                    }}
-                    className="w-full px-4 py-2.5 text-left flex items-center gap-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                  >
-                    <LogOut className="w-4 h-4 text-rose-500" />
-                    <span>Đăng xuất tài khoản</span>
-                  </button>
-                </div>
-              )}
-            </div>
+                    {/* Divider */}
+                    <div className="my-1 border-t border-slate-100"></div>
+
+                    {/* Mục 3: ĐĂNG XUẤT (Về ngay nội dung trang bìa) */}
+                    <button
+                      onClick={() => {
+                        setShowUserDropdown(false);
+                        if (onLogout) onLogout();
+                      }}
+                      className="w-full px-4 py-2.5 text-left flex items-center gap-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4 text-rose-500" />
+                      <span>Đăng xuất tài khoản</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Socratic Pedagogy Guide */}
             <button

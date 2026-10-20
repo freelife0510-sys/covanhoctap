@@ -67,19 +67,6 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
     }, 300);
   };
 
-  // Trải nghiệm nhanh với tài khoản giáo viên mẫu
-  const handleQuickDemo = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      const demoEmail = 'giaovien.demo@gmail.com';
-      localStorage.setItem('google_teacher_email', demoEmail);
-      const { teacher } = loginTeacherWithGoogle(demoEmail, 'Giáo viên Bộ môn Toán', 'THPT Chuẩn GDPT 2018');
-      setIsLoading(false);
-      onLoginSuccess(teacher);
-      onClose();
-    }, 300);
-  };
-
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
@@ -213,29 +200,8 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
             </span>
           </button>
 
-          {/* Phân cách */}
-          <div className="relative py-1">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200"></div>
-            </div>
-            <div className="relative flex justify-center text-[10px] uppercase">
-              <span className="bg-white px-2.5 text-slate-400 font-bold">Hoặc trải nghiệm ngay</span>
-            </div>
-          </div>
-
-          {/* Nút Trải nghiệm nhanh */}
-          <button
-            type="button"
-            onClick={handleQuickDemo}
-            disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-700/20 transition-all cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 text-emerald-200" />
-            <span>Khởi tạo & Trải nghiệm mẫu Lớp 12A1 (5 học sinh)</span>
-          </button>
-
-          <p className="text-[11px] text-center text-slate-500 pt-1">
-            Mỗi giáo viên có toàn quyền thêm/xóa lớp, nhập danh sách học sinh và xuất file điểm.
+          <p className="text-[11px] text-center text-slate-500 pt-2">
+            Mỗi giáo viên có toàn quyền thêm/xóa lớp, nhập danh sách học sinh và xuất file điểm riêng của lớp mình.
           </p>
         </div>
       </div>
