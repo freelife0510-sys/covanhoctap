@@ -2,6 +2,8 @@ import React from 'react';
 import { 
   GraduationCap, 
   UserCheck, 
+  User,
+  School,
   Sparkles, 
   ArrowRight, 
   CheckCircle2, 
@@ -485,7 +487,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 {/* Học sinh hỏi */}
                 <div className="flex items-start gap-2.5 justify-end">
                   <div className="bg-emerald-600 text-white p-3.5 rounded-2xl rounded-tr-none max-w-sm shadow-xs leading-relaxed">
-                    Thầy ơi em vẫn bị lúng túng khi đặt điều kiện vế phải của phương trình vô tỉ $\sqrt{A} = B$, em hay quên điều kiện $B \ge 0$ dẫn đến ra nghiệm ngoại lai ạ...
+                    {"Thầy ơi em vẫn bị lúng túng khi đặt điều kiện vế phải của phương trình vô tỉ $\\sqrt{A} = B$, em hay quên điều kiện $B \\ge 0$ dẫn đến ra nghiệm ngoại lai ạ..."}
                   </div>
                 </div>
 
