@@ -13,8 +13,7 @@ import {
 import { StudentAccount } from '../types/index.ts';
 import { 
   loginStudentWithCredentials, 
-  getAllGlobalStudents,
-  loginTeacherWithGoogle
+  getAllGlobalStudents
 } from '../services/storageService.ts';
 
 interface StudentLoginModalProps {
