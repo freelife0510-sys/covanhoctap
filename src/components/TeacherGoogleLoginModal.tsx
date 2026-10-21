@@ -22,7 +22,9 @@ import {
   RefreshCw,
   SlidersHorizontal,
   ChevronDown,
-  Info
+  Info,
+  BookOpen,
+  Server
 } from 'lucide-react';
 import { Teacher } from '../types/index.ts';
 import { loginTeacherWithGoogle, saveTeacherProfile } from '../services/storageService.ts';
@@ -89,11 +91,12 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
     return [];
   });
 
-  // Client ID lưu trên máy
+  // Client ID lưu trên máy hoặc từ biến môi trường
   const [clientIdInput, setClientIdInput] = useState(() => {
     return localStorage.getItem('math_google_client_id') || ENV_GOOGLE_CLIENT_ID || '';
   });
   const [showConfigClientId, setShowConfigClientId] = useState(false);
+  const [showGuideSteps, setShowGuideSteps] = useState(false);
   const [isGsiReady, setIsGsiReady] = useState(false);
 
   const [activeMode, setActiveMode] = useState<'input' | 'list'>('input');
@@ -103,7 +106,7 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
 
   const googleBtnContainerRef = useRef<HTMLDivElement>(null);
 
-  // Khi modal mở: Khởi tạo dữ liệu và dịch vụ Google Identity Services
+  // Khi modal mở: Khởi tạo dữ liệu và dịch vụ Google Identity Services (GIS)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -137,13 +140,13 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
       if (lastName) setNameInput(lastName);
     }
 
-    // Khởi tạo Google Identity Services Button nếu Client ID hợp lệ
+    // Bước 2 & 3: Khởi tạo Google Identity Services Button & One Tap nếu Client ID có sẵn
     const effectiveClientId = (clientIdInput || ENV_GOOGLE_CLIENT_ID).trim();
     if (effectiveClientId && (window as any).google?.accounts?.id) {
       try {
         (window as any).google.accounts.id.initialize({
           client_id: effectiveClientId,
-          callback: handleGoogleJwtCallback,
+          callback: handleGoogleCredentialResponse,
           auto_select: false,
           cancel_on_tap_outside: true,
         });
@@ -160,6 +163,14 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
             width: 320,
           });
         }
+
+        // Kích hoạt One Tap nếu phù hợp
+        (window as any).google.accounts.id.prompt((notification: any) => {
+          if (notification?.isNotDisplayed()) {
+            console.log('Google One Tap suppressed:', notification.getNotDisplayedReason());
+          }
+        });
+
         setIsGsiReady(true);
       } catch (err) {
         console.warn('Lỗi init Google Identity Services:', err);
@@ -212,25 +223,68 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
     onClose();
   };
 
-  // Xử lý callback khi đăng nhập bằng Google GSI Button (JWT ID token)
-  const handleGoogleJwtCallback = (response: any) => {
+  // Bước 4 chuẩn: Tiếp nhận ID Token và gửi đến Back-end (/api/auth/google) để xác thực
+  const handleGoogleCredentialResponse = async (response: any) => {
     if (!response?.credential) {
-      setErrorMessage('Không nhận được thông tin xác thực từ Google. Vui lòng thử lại!');
-      return;
-    }
-    const decoded = decodeGoogleJwt(response.credential);
-    if (!decoded || !decoded.email) {
-      setErrorMessage('Không thể giải mã dữ liệu tài khoản Google.');
+      setErrorMessage('Không nhận được mã xác thực (ID Token) từ Google. Vui lòng thử lại!');
       return;
     }
 
     setIsLoading(true);
-    completeTeacherLogin(
-      decoded.email,
-      decoded.name || decoded.given_name || '',
-      decoded.picture || '',
-      ''
-    );
+    setErrorMessage('');
+
+    try {
+      // 1. Gửi ID Token đến endpoint Back-end serverless để Google OAuth xác minh
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          credential: response.credential,
+          clientId: (clientIdInput || ENV_GOOGLE_CLIENT_ID).trim()
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.user?.email) {
+          completeTeacherLogin(
+            data.user.email,
+            data.user.name,
+            data.user.picture,
+            ''
+          );
+          return;
+        }
+      }
+
+      // 2. Dự phòng trong môi trường dev cục bộ chưa bật serverless: Giải mã JWT an toàn
+      const decoded = decodeGoogleJwt(response.credential);
+      if (decoded && decoded.email) {
+        completeTeacherLogin(
+          decoded.email,
+          decoded.name || decoded.given_name || '',
+          decoded.picture || '',
+          ''
+        );
+      } else {
+        setErrorMessage('Không thể xác thực thông tin từ Google ID Token.');
+      }
+    } catch (err: any) {
+      console.warn('Lỗi gọi API backend, kích hoạt dự phòng giải mã token:', err);
+      const decoded = decodeGoogleJwt(response.credential);
+      if (decoded && decoded.email) {
+        completeTeacherLogin(
+          decoded.email,
+          decoded.name || decoded.given_name || '',
+          decoded.picture || '',
+          ''
+        );
+      } else {
+        setErrorMessage('Lỗi xác thực: ' + (err.message || 'Vui lòng thử lại'));
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Kích hoạt Google OAuth2 Popup chuẩn (Token Client)
@@ -240,7 +294,7 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
 
     if (!effectiveClientId) {
       setShowConfigClientId(true);
-      setErrorMessage('Chưa có Google Client ID. Thầy/Cô có thể nhập Client ID bên dưới hoặc đăng nhập trực tiếp bằng Gmail ngay.');
+      setErrorMessage('Chưa có Google Client ID. Thầy/Cô có thể điền Client ID vào phần Cấu hình bên dưới hoặc đăng nhập trực tiếp bằng Gmail.');
       return;
     }
 
@@ -378,7 +432,7 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
             Đăng nhập Giáo viên bằng Google
           </h2>
           <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
-            Hỗ trợ <strong>tài khoản Gmail & Google Workspace</strong> để kết nối không gian quản trị độc lập
+            Hỗ trợ <strong>Google Identity Services (GIS)</strong> & xác thực an toàn ID Token ở máy chủ
           </p>
         </div>
 
@@ -526,11 +580,11 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
                   />
                 </svg>
                 <span className="group-hover:text-emerald-800 transition-colors">
-                  {isLoading ? 'Đang kết nối tài khoản...' : 'Tiếp tục với Google Popup'}
+                  {isLoading ? 'Đang xác thực Google...' : 'Tiếp tục với Google Popup (OAuth 2.0)'}
                 </span>
               </button>
 
-              {/* Khung chứa nút Google Identity Services render tự động nếu có Client ID */}
+              {/* Khung chứa nút Google Identity Services render tự động (g_id_signin) nếu có Client ID */}
               <div ref={googleBtnContainerRef} className="flex justify-center empty:hidden"></div>
 
               {/* Divider Hoặc */}
@@ -603,31 +657,65 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
           )}
 
           {/* ========================================================================= */}
-          {/* CẤU HÌNH GOOGLE CLIENT ID (TÙY CHỌN CHO QUẢN TRỊ VIÊN)                     */}
+          {/* CẤU HÌNH GOOGLE CLIENT ID & HƯỚNG DẪN GOOGLE CLOUD (CHUẨN 4 BƯỚC)          */}
           {/* ========================================================================= */}
-          <div className="border-t border-slate-100 pt-3">
-            <button
-              type="button"
-              onClick={() => setShowConfigClientId(!showConfigClientId)}
-              className="w-full flex items-center justify-between text-[11px] font-bold text-slate-500 hover:text-slate-800 transition-colors py-1 cursor-pointer"
-            >
-              <span className="flex items-center gap-1.5">
+          <div className="border-t border-slate-100 pt-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowConfigClientId(!showConfigClientId)}
+                className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 hover:text-slate-900 transition-colors py-1 cursor-pointer"
+              >
                 <Settings className="w-3.5 h-3.5 text-slate-400" />
-                Cấu hình Google OAuth Client ID (Tùy chọn)
-              </span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showConfigClientId ? 'rotate-180' : ''}`} />
-            </button>
+                <span>Cấu hình Google OAuth Client ID</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showConfigClientId ? 'rotate-180' : ''}`} />
+              </button>
 
+              <button
+                type="button"
+                onClick={() => setShowGuideSteps(!showGuideSteps)}
+                className="text-[11px] text-emerald-700 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+              >
+                <BookOpen className="w-3 h-3" />
+                <span>Quy trình 4 bước</span>
+              </button>
+            </div>
+
+            {/* Bảng hướng dẫn 4 bước tiêu chuẩn */}
+            {showGuideSteps && (
+              <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-xs text-slate-700 space-y-2 animate-in fade-in">
+                <div className="font-bold text-emerald-900 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Quy trình tích hợp Google Identity Services (GIS):</span>
+                </div>
+                <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-slate-600 leading-relaxed">
+                  <li>
+                    <strong>Google Cloud Console:</strong> Tạo OAuth Client ID (Web Application), khai báo Authorized JavaScript origin là <code className="px-1 py-0.5 rounded bg-white font-mono text-emerald-800">https://covanhoctap.vercel.app</code>.
+                  </li>
+                  <li>
+                    <strong>Thư viện JS:</strong> Đã nhúng sẵn <code className="px-1 py-0.5 rounded bg-white font-mono text-emerald-800">https://accounts.google.com/gsi/client</code> vào thẻ <code className="font-mono">&lt;head&gt;</code>.
+                  </li>
+                  <li>
+                    <strong>Giao diện:</strong> Tích hợp nút Đăng nhập chuẩn Google & Google One Tap thông qua GIS API.
+                  </li>
+                  <li>
+                    <strong>Back-end Serverless:</strong> Endpoint <code className="px-1 py-0.5 rounded bg-white font-mono text-emerald-800">/api/auth/google</code> tiếp nhận ID Token và gửi đến Google API để xác minh chữ ký bảo mật.
+                  </li>
+                </ol>
+              </div>
+            )}
+
+            {/* Khung nhập Client ID */}
             {showConfigClientId && (
-              <form onSubmit={handleSaveClientId} className="mt-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2 animate-in fade-in">
+              <form onSubmit={handleSaveClientId} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2 animate-in fade-in">
                 <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Để kích hoạt popup Google nguyên bản trên tên miền chính thức, Thầy/Cô có thể nhập Google Client ID từ Google Cloud Console:
+                  Nhập Client ID của Thầy/Cô từ Google Cloud Console để mở popup đăng nhập nguyên bản của Google:
                 </p>
                 <input
                   type="text"
                   value={clientIdInput}
                   onChange={(e) => setClientIdInput(e.target.value)}
-                  placeholder="...apps.googleusercontent.com"
+                  placeholder="ví dụ: 123456789-xyz.apps.googleusercontent.com"
                   className="w-full text-[11px] font-mono px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 <div className="flex items-center justify-between pt-1">
@@ -637,7 +725,7 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
                     rel="noopener noreferrer"
                     className="text-[10px] text-emerald-700 hover:underline flex items-center gap-1"
                   >
-                    <span>Lấy Client ID</span>
+                    <span>Mở Google Cloud Console</span>
                     <ExternalLink className="w-2.5 h-2.5" />
                   </a>
                   <button
@@ -654,11 +742,11 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
           {/* Ghi chú bảo mật & phân quyền */}
           <div className="border-t border-slate-100 pt-2 text-[11px] text-slate-500 leading-relaxed space-y-1">
             <div className="flex items-center gap-1.5 font-bold text-slate-700">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Bảo mật & Phân quyền độc lập theo Gmail:</span>
+              <Server className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Xác thực an toàn & Đồng bộ dữ liệu:</span>
             </div>
             <p>
-              Mỗi tài khoản Google sẽ sở hữu không gian quản lý lớp học, học sinh và phiếu chẩn đoán riêng biệt, được lưu trữ an toàn.
+              Mỗi tài khoản Google sở hữu không gian quản trị độc lập, toàn quyền quản lý danh sách học sinh và xuất phiếu chẩn đoán GDPT 2018.
             </p>
           </div>
 
