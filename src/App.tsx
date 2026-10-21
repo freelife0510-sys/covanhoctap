@@ -245,6 +245,7 @@ export default function App() {
   // Đăng nhập Giáo viên bằng Google thành công
   const handleTeacherLoginSuccess = (teacherUser: Teacher) => {
     setTeacher(teacherUser);
+    saveTeacherProfile(teacherUser);
     const loadedClasses = getClassesForTeacher(teacherUser.id);
     const loadedStudents = getStudentsForTeacher(teacherUser.id);
     const loadedSubmissions = getSubmissionsForTeacher(teacherUser.id);
@@ -256,12 +257,14 @@ export default function App() {
       setCurrentStudent(loadedStudents[0]);
     }
 
-    setAuthSession({
+    const session: AuthSession = {
       role: 'teacher',
       teacherUser,
       studentUser: null,
       isAuthenticated: true,
-    });
+    };
+    setAuthSession(session);
+    saveAuthSession(session);
     setCurrentRole('teacher');
     setCurrentView('teacher');
     setShowTeacherLoginModal(false);
@@ -270,12 +273,14 @@ export default function App() {
   // Đăng nhập Học sinh thành công
   const handleStudentLoginSuccess = (studentUser: StudentAccount) => {
     setCurrentStudent(studentUser);
-    setAuthSession({
+    const session: AuthSession = {
       role: 'student',
       teacherUser: null,
       studentUser,
       isAuthenticated: true,
-    });
+    };
+    setAuthSession(session);
+    saveAuthSession(session);
     setCurrentRole('student');
     setCurrentView('student');
     setShowStudentLoginModal(false);

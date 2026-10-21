@@ -610,29 +610,8 @@ export function removeAccents(str: string): string {
 // Đồng bộ danh sách học sinh toàn hệ thống để học sinh đăng nhập dễ dàng
 export function syncGlobalStudentsPool(): void {
   try {
-    const allTeachers = getSavedTeachers();
-    const globalList: StudentAccount[] = [];
-    const seenIds = new Set<string>();
-
-    Object.keys(allTeachers).forEach((tid) => {
-      const studs = getStudentsForTeacher(tid);
-      studs.forEach((s) => {
-        if (!seenIds.has(s.id)) {
-          seenIds.add(s.id);
-          globalList.push(s);
-        }
-      });
-    });
-
-    // Bổ sung học sinh mặc định
-    DEFAULT_SYSTEM_STUDENTS.forEach((ds) => {
-      if (!seenIds.has(ds.id)) {
-        seenIds.add(ds.id);
-        globalList.push(ds);
-      }
-    });
-
-    localStorage.setItem(STORAGE_KEYS.GLOBAL_STUDENTS, JSON.stringify(globalList));
+    const allStudents = getAllGlobalStudents();
+    localStorage.setItem(STORAGE_KEYS.GLOBAL_STUDENTS, JSON.stringify(allStudents));
   } catch (e) {
     console.warn('Lỗi đồng bộ danh sách học sinh toàn hệ thống:', e);
   }
@@ -642,47 +621,66 @@ export function getAllGlobalStudents(): StudentAccount[] {
   const result: StudentAccount[] = [];
   const seenIds = new Set<string>();
 
-  // 1. Thêm học sinh từ các giáo viên đã tạo
-  try {
-    const allTeachers = getSavedTeachers();
-    Object.keys(allTeachers).forEach((tid) => {
-      const studs = getStudentsForTeacher(tid);
-      studs.forEach((s) => {
-        if (!seenIds.has(s.id)) {
-          seenIds.add(s.id);
-          result.push(s);
-        }
+  const addStudentSafe = (st: StudentAccount) => {
+    if (!st || !st.id) return;
+    const cleanId = String(st.id).trim();
+    if (!seenIds.has(cleanId)) {
+      seenIds.add(cleanId);
+      result.push({
+        ...st,
+        password: (st.password || '123').trim(),
       });
-    });
+    }
+  };
+
+  // 1. Quét TRỰC TIẾP toàn bộ localStorage tìm tất cả các key học sinh của các giáo viên
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('math_students_teacher_')) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const list: StudentAccount[] = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              list.forEach(addStudentSafe);
+            }
+          } catch (e) {
+            console.warn(`Lỗi parse danh sách học sinh từ key ${key}:`, e);
+          }
+        }
+      }
+    }
   } catch (e) {
-    console.warn('Lỗi đọc học sinh từ các giáo viên:', e);
+    console.warn('Lỗi quét localStorage học sinh:', e);
   }
 
-  // 2. Thêm học sinh trong STORAGE_KEYS.GLOBAL_STUDENTS
+  // 2. Thêm học sinh trong STORAGE_KEYS.GLOBAL_STUDENTS (math_global_students_db)
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.GLOBAL_STUDENTS);
     if (raw) {
       const parsed: StudentAccount[] = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        parsed.forEach((s) => {
-          if (!seenIds.has(s.id)) {
-            seenIds.add(s.id);
-            result.push(s);
-          }
-        });
+        parsed.forEach(addStudentSafe);
       }
     }
   } catch (e) {
     console.warn('Lỗi đọc danh sách học sinh toàn hệ thống:', e);
   }
 
-  // 3. Luôn bảo đảm các tài khoản học sinh chuẩn mẫu sẵn sàng đăng nhập (Nguyễn Duy An, v.v.)
-  DEFAULT_SYSTEM_STUDENTS.forEach((ds) => {
-    if (!seenIds.has(ds.id)) {
-      seenIds.add(ds.id);
-      result.push(ds);
-    }
-  });
+  // 3. Đọc từ tất cả các giáo viên trong math_teachers_db
+  try {
+    const allTeachers = getSavedTeachers();
+    Object.keys(allTeachers).forEach((tid) => {
+      const studs = getStudentsForTeacher(tid);
+      studs.forEach(addStudentSafe);
+    });
+  } catch (e) {
+    console.warn('Lỗi đọc học sinh từ các giáo viên:', e);
+  }
+
+  // 4. Luôn bảo đảm các tài khoản học sinh chuẩn mẫu sẵn sàng đăng nhập (Nguyễn Duy An, v.v.)
+  DEFAULT_SYSTEM_STUDENTS.forEach(addStudentSafe);
 
   return result;
 }
@@ -755,28 +753,36 @@ export function loginStudentWithCredentials(
   const noAccentId = removeAccents(cleanId);
   const alphaNumId = cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
-  // Đảm bảo pool đồng bộ
+  // Đảm bảo pool đồng bộ mới nhất
+  syncGlobalStudentsPool();
   const allStudents = getAllGlobalStudents();
 
   // Tìm kiếm theo ID hoặc Tên (khớp chính xác, khớp không dấu, hoặc khớp mã)
   const matched = allStudents.find((st) => {
+    if (!st) return false;
     const matchClass = classId ? st.classId === classId : true;
     if (!matchClass) return false;
 
-    const stNormName = normalizeString(st.name);
-    const stNoAccentName = removeAccents(st.name);
-    const stCode = normalizeString(st.studentCode || st.id);
-    const stAlphaNumCode = (st.studentCode || st.id).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const stNormName = normalizeString(st.name || '');
+    const stNoAccentName = removeAccents(st.name || '');
+    const stCode = normalizeString(st.studentCode || st.id || '');
+    const stAlphaNumCode = (st.studentCode || st.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const stIdAlphaNum = (st.id || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
-    // Khớp mã học sinh hoặc ID
-    if (stCode === normId || stAlphaNumCode === alphaNumId || normalizeString(st.id) === normId) {
+    // 1. Khớp mã học sinh hoặc ID (chính xác hoặc bỏ ký tự gạch nối)
+    if (
+      stCode === normId ||
+      stAlphaNumCode === alphaNumId ||
+      stIdAlphaNum === alphaNumId ||
+      normalizeString(st.id || '') === normId
+    ) {
       return true;
     }
-    // Khớp họ và tên (có dấu hoặc không dấu)
+    // 2. Khớp họ và tên (có dấu hoặc không dấu)
     if (stNormName === normId || stNoAccentName === noAccentId) {
       return true;
     }
-    // Khớp tương đối tên (ví dụ: gõ "Duy An" hoặc "Nguyễn Duy An")
+    // 3. Khớp tương đối tên (ví dụ: gõ "Duy An" hoặc "Nguyễn Duy An")
     if (
       noAccentId.length >= 3 &&
       (stNoAccentName.includes(noAccentId) || noAccentId.includes(stNoAccentName))
@@ -794,14 +800,17 @@ export function loginStudentWithCredentials(
     };
   }
 
-  // KIỂM TRA MẬT KHẨU CHÍNH XÁC (Từ chối sai mật khẩu, không tự ý ghi đè):
-  const studentPass = (matched.password || '').trim();
-  const isMatch = cleanPass === studentPass || (!studentPass && (cleanPass === '123' || cleanPass === '123456'));
+  // KIỂM TRA MẬT KHẨU CHÍNH XÁC (Mặc định là 123 nếu để trống):
+  const studentPass = (matched.password || '123').trim();
+  const isMatch =
+    cleanPass === studentPass ||
+    (!studentPass && (cleanPass === '123' || cleanPass === '123456')) ||
+    (studentPass === '' && cleanPass === '123');
 
   if (!isMatch) {
     return {
       success: false,
-      errorMessage: 'Mật khẩu không chính xác. Vui lòng nhập đúng mật khẩu được cấp hoặc liên hệ Thầy/Cô để được cấp lại!',
+      errorMessage: 'Mật khẩu không chính xác. Mật khẩu mặc định là 123 hoặc liên hệ Thầy/Cô để được cấp lại!',
     };
   }
 
@@ -855,7 +864,7 @@ export function parseBulkStudents(
     } else if (parts.length === 1) {
       name = parts[0];
       code = `HS${defaultGrade}-${String(nextIdx).padStart(2, '0')}`;
-      pass = generateRandomPassword(6);
+      pass = '123'; // Mật khẩu mặc định 123 dễ nhớ cho học sinh
     }
 
     if (name) {
@@ -867,7 +876,7 @@ export function parseBulkStudents(
         className,
         teacherId,
         teacherName,
-        password: pass || generateRandomPassword(6),
+        password: (pass || '123').trim(),
         avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(name)}`,
         status: 'not_started',
         gapsCount: 0,
