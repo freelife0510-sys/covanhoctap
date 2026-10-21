@@ -257,17 +257,18 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
 
       onNewSubmission(newSub);
 
-      // Cập nhật điểm và lịch sử học sinh
-      const score = aiResponse.isCorrect ? 10 : 5.5;
+      // Cập nhật lỗ hổng sư phạm khi CÓ BẰNG CHỨNG rõ ràng từ bài giải của học sinh
       const detectedGaps = [...(student.detectedGaps || [])];
-      if (aiResponse.errorCategory && !detectedGaps.includes(aiResponse.errorCategory)) {
+      const hasRealStudentWork = Boolean(currentAttached?.text || userText.length > 40);
+
+      if (hasRealStudentWork && aiResponse.errorCategory && !aiResponse.isCorrect && !detectedGaps.includes(aiResponse.errorCategory)) {
         detectedGaps.push(aiResponse.errorCategory);
       }
 
+      // Giữ nguyên điểm số hiện tại của học sinh, KHÔNG tự gán 10 hay 5.5 khi chỉ hỏi bài hoặc chưa qua bài kiểm tra chuẩn hóa
       onUpdateStudent({
         ...student,
-        status: aiResponse.isCorrect ? 'diagnosed' : 'needs_remedy',
-        latestScore: score,
+        status: detectedGaps.length === 0 ? 'diagnosed' : 'needs_remedy',
         gapsCount: detectedGaps.length,
         detectedGaps,
       });
@@ -359,6 +360,8 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({
         <SelfStudyModule
           apiKey={apiKey}
           selectedModel={selectedModel}
+          student={student}
+          onUpdateStudent={onUpdateStudent}
         />
       ) : (
         /* VIEW 2: CỐ VẤN AI & TRÌNH SOẠN THẢO A4 */

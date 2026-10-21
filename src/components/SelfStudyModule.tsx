@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BookOpen, 
   CheckCircle2, 
@@ -17,7 +17,13 @@ import {
   Lightbulb,
   Check,
   TrendingUp,
-  Award
+  Award,
+  History,
+  Target,
+  ArrowRight,
+  ShieldCheck,
+  Flame,
+  BarChart3
 } from 'lucide-react';
 import { 
   HIGH_SCHOOL_CURRICULUM 
@@ -31,17 +37,35 @@ import {
   TrueFalseQuestion, 
   ShortAnswerQuestion 
 } from '../types/curriculum.ts';
+import { StudentAccount, TestHistoryItem } from '../types/index.ts';
 import MathRenderer from './MathRenderer.tsx';
 import { GoogleGenAI } from '@google/genai';
+
+export interface AttemptHistoryItem {
+  id: string;
+  date: string;
+  lessonId: string;
+  lessonTitle: string;
+  grade: GradeLevel;
+  chapterTitle: string;
+  format: ExerciseFormat;
+  correctAnswers: number;
+  totalQuestions: number;
+  score: number;
+}
 
 interface SelfStudyModuleProps {
   apiKey?: string;
   selectedModel?: string;
+  student?: StudentAccount;
+  onUpdateStudent?: (student: StudentAccount) => void;
 }
 
 export const SelfStudyModule: React.FC<SelfStudyModuleProps> = ({
   apiKey = '',
   selectedModel = 'gemini-3.8-flash',
+  student,
+  onUpdateStudent,
 }) => {
   // Navigation State
   const [selectedGrade, setSelectedGrade] = useState<GradeLevel>('12');
@@ -56,12 +80,28 @@ export const SelfStudyModule: React.FC<SelfStudyModuleProps> = ({
 
   // Dropdown / Modal selector state
   const [showLessonSelectorModal, setShowLessonSelectorModal] = useState(false);
+  const [showSkillModal, setShowSkillModal] = useState(false);
+  const [showAttemptNotice, setShowAttemptNotice] = useState(false);
 
   // Exercise Answers & Evaluation State
   const [mcAnswers, setMcAnswers] = useState<Record<string, 'A' | 'B' | 'C' | 'D'>>({});
   const [tfAnswers, setTfAnswers] = useState<Record<string, Record<'a' | 'b' | 'c' | 'd', boolean | null>>>({});
   const [saAnswers, setSaAnswers] = useState<Record<string, string>>({});
   const [evaluatedQuestions, setEvaluatedQuestions] = useState<Record<string, boolean>>({});
+
+  // P1: Gợi ý theo bước (Step-by-step hint)
+  const [hintsRevealed, setHintsRevealed] = useState<Record<string, number>>({});
+
+  // P1: Lưu từng lượt làm (Attempt history)
+  const [attemptHistory, setAttemptHistory] = useState<AttemptHistoryItem[]>(() => {
+    try {
+      const storageKey = `math_self_study_attempts_${student?.id || 'default'}`;
+      const saved = localStorage.getItem(storageKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Dynamic AI generated questions state
   const [aiGeneratedExercises, setAiGeneratedExercises] = useState<{
@@ -70,6 +110,19 @@ export const SelfStudyModule: React.FC<SelfStudyModuleProps> = ({
     shortAnswer: ShortAnswerQuestion[];
   }>({ multipleChoice: [], trueFalse: [], shortAnswer: [] });
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+
+  // Sync attempt history if student changes
+  useEffect(() => {
+    try {
+      const storageKey = `math_self_study_attempts_${student?.id || 'default'}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        setAttemptHistory(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc lịch sử làm bài:', e);
+    }
+  }, [student?.id]);
 
   // Lấy dữ liệu khối, chương, bài hiện tại
   const currentGradeData = HIGH_SCHOOL_CURRICULUM.find((g) => g.grade === selectedGrade) || HIGH_SCHOOL_CURRICULUM[0];
@@ -87,6 +140,7 @@ export const SelfStudyModule: React.FC<SelfStudyModuleProps> = ({
     setTfAnswers({});
     setSaAnswers({});
     setEvaluatedQuestions({});
+    setHintsRevealed({});
     setAiGeneratedExercises({ multipleChoice: [], trueFalse: [], shortAnswer: [] });
   };
 
@@ -123,6 +177,212 @@ export const SelfStudyModule: React.FC<SelfStudyModuleProps> = ({
       delete next[qId];
       return next;
     });
+  };
+
+  // P1: Mở gợi ý từng bước (Step-by-step hint)
+  const handleRevealHint = (qId: string) => {
+    setHintsRevealed((prev) => {
+      const current = prev[qId] || 0;
+      return { ...prev, [qId]: current < 3 ? current + 1 : 1 };
+    });
+  };
+
+  // P1: Trợ giúp sinh gợi ý sư phạm chuẩn theo từng bước
+  const getQuestionHints = (q: any, format: ExerciseFormat) => {
+    if (format === 'short_answer' && q.modelingSteps && q.modelingSteps.length >= 3) {
+      return {
+        step1: `${q.modelingSteps[0].stepName}: ${q.modelingSteps[0].description}`,
+        step2: `${q.modelingSteps[1].stepName}: ${q.modelingSteps[1].description}`,
+        step3: `${q.modelingSteps[2].stepName}: ${q.modelingSteps[2].description}`,
+      };
+    }
+    if (format === 'short_answer') {
+      return {
+        step1: 'Bước 1 (Chọn ẩn số & Đặt điều kiện): Gọi ẩn số đại diện cho đại lượng thay đổi (ví dụ: số lần tăng giá $x \\in \\mathbb{N}$ hoặc kích thước $x > 0$).',
+        step2: 'Bước 2 (Thiết lập hàm mục tiêu): Biểu diễn các đại lượng còn lại theo $x$ và viết công thức hàm mục tiêu $R(x)$ hoặc $f(x)$ trên miền xác định.',
+        step3: 'Bước 3 (Khảo sát cực trị & Kết luận): Tính đạo hàm cấp một $f\'(x)$, giải $f\'(x) = 0$, lập bảng biến thiên để xác định giá trị tối ưu và trả lời đúng đơn vị.',
+      };
+    }
+    if (format === 'multiple_choice') {
+      return {
+        step1: 'Bước 1 (Nhận diện bài toán): Xác định chuyên đề kiến thức, điều kiện xác định của biểu thức và công thức toán học trọng tâm.',
+        step2: 'Bước 2 (Loại trừ nhanh): Quan sát các dấu hiệu đặc biệt (tập xác định, dấu hệ số $a$, tiệm cận, điểm đi qua) để loại trừ bớt các phương án vô lý.',
+        step3: 'Bước 3 (Biến đổi mấu chốt): Áp dụng công thức biến đổi tương đương hoặc tính toán định lượng để đối chiếu chính xác phương án đúng.',
+      };
+    }
+    // True / False
+    return {
+      step1: 'Bước 1 (Phân tích giả thiết chung): Đọc kỹ ngữ cảnh bài toán, vẽ hình minh họa hoặc tóm tắt các đại lượng cho trước.',
+      step2: 'Bước 2 (Thẩm định độc lập): Xét từng mệnh đề a), b), c), d) một cách độc lập, viết công thức tương ứng cho từng mệnh đề.',
+      step3: 'Bước 3 (Đối chiếu điều kiện biên): Chú ý các điều kiện chặt chẽ (mẫu số $\\ne 0$, biểu thức căn bậc hai $\\ge 0$, dấu bằng xảy ra) để khẳng định ĐÚNG hay SAI.',
+    };
+  };
+
+  // P1: Lưu lượt làm bài (Record Attempt History & Sync Data)
+  const handleSaveAttempt = () => {
+    if (!currentLesson) return;
+
+    let total = 0;
+    let correct = 0;
+    const gaps: string[] = [];
+
+    if (exerciseFormat === 'multiple_choice') {
+      currentMcQuestions.forEach((q) => {
+        if (evaluatedQuestions[q.id]) {
+          total++;
+          if (mcAnswers[q.id] === q.correctAnswer) {
+            correct++;
+          } else {
+            gaps.push(`${currentLesson.title} (Trắc nghiệm Câu ${q.id})`);
+          }
+        }
+      });
+    } else if (exerciseFormat === 'true_false') {
+      currentTfQuestions.forEach((q) => {
+        if (evaluatedQuestions[q.id]) {
+          total++;
+          const userAns = tfAnswers[q.id] || { a: null, b: null, c: null, d: null };
+          const allCorrect = q.statements.every((st) => userAns[st.subId] === st.isCorrect);
+          if (allCorrect) {
+            correct++;
+          } else {
+            gaps.push(`${currentLesson.title} (Đúng/Sai)`);
+          }
+        }
+      });
+    } else if (exerciseFormat === 'short_answer') {
+      currentSaQuestions.forEach((q) => {
+        if (evaluatedQuestions[q.id]) {
+          total++;
+          const userVal = (saAnswers[q.id] || '').trim().toLowerCase().replace(/,/g, '.');
+          const isCorrect = q.acceptableAnswers.some(
+            (ans) => ans.trim().toLowerCase().replace(/,/g, '.') === userVal || String(q.correctValue) === userVal
+          );
+          if (isCorrect) {
+            correct++;
+          } else {
+            gaps.push(`${currentLesson.title} (Mô hình hóa thực tế)`);
+          }
+        }
+      });
+    }
+
+    if (total === 0) {
+      alert('Vui lòng làm bài và bấm "Kiểm tra kết quả" ít nhất 1 câu trước khi lưu lượt làm!');
+      return;
+    }
+
+    const calculatedScore = Number(((correct / total) * 10).toFixed(1));
+    const nowStr = new Date().toLocaleString('vi-VN');
+
+    const newAttempt: AttemptHistoryItem = {
+      id: `attempt-${Date.now()}`,
+      date: nowStr,
+      lessonId: currentLesson.id,
+      lessonTitle: currentLesson.title,
+      grade: selectedGrade,
+      chapterTitle: currentChapter.title,
+      format: exerciseFormat,
+      correctAnswers: correct,
+      totalQuestions: total,
+      score: calculatedScore,
+    };
+
+    const nextHistory = [newAttempt, ...attemptHistory];
+    setAttemptHistory(nextHistory);
+    try {
+      localStorage.setItem(
+        `math_self_study_attempts_${student?.id || 'default'}`,
+        JSON.stringify(nextHistory)
+      );
+    } catch (e) {
+      console.warn('Lỗi lưu lịch sử:', e);
+    }
+
+    // Đồng bộ với tài khoản học sinh & giáo viên
+    if (student && onUpdateStudent) {
+      const newTestHistoryItem: TestHistoryItem = {
+        id: newAttempt.id,
+        date: nowStr,
+        score: calculatedScore,
+        durationMinutes: 10,
+        correctAnswers: correct,
+        totalQuestions: total,
+        gapsDetected: gaps,
+      };
+
+      const existingHistory = student.testHistory || [];
+      const updatedDetectedGaps = Array.from(new Set([...(student.detectedGaps || []), ...gaps]));
+
+      onUpdateStudent({
+        ...student,
+        latestScore: calculatedScore,
+        testHistory: [newTestHistoryItem, ...existingHistory],
+        detectedGaps: updatedDetectedGaps,
+        gapsCount: updatedDetectedGaps.length,
+        status: calculatedScore >= 7.0 ? 'improving' : 'needs_remedy',
+      });
+    }
+
+    setShowAttemptNotice(true);
+    setTimeout(() => setShowAttemptNotice(false), 4500);
+  };
+
+  // P1: Kiểm tra lại sau sửa (Re-test failed questions)
+  const handleRetestWrongQuestions = () => {
+    const nextEvaluated = { ...evaluatedQuestions };
+    let resetCount = 0;
+
+    if (exerciseFormat === 'multiple_choice') {
+      currentMcQuestions.forEach((q) => {
+        if (evaluatedQuestions[q.id] && mcAnswers[q.id] !== q.correctAnswer) {
+          delete nextEvaluated[q.id];
+          setMcAnswers((prev) => {
+            const copy = { ...prev };
+            delete copy[q.id];
+            return copy;
+          });
+          resetCount++;
+        }
+      });
+    } else if (exerciseFormat === 'true_false') {
+      currentTfQuestions.forEach((q) => {
+        const userAns = tfAnswers[q.id] || { a: null, b: null, c: null, d: null };
+        const allCorrect = q.statements.every((st) => userAns[st.subId] === st.isCorrect);
+        if (evaluatedQuestions[q.id] && !allCorrect) {
+          delete nextEvaluated[q.id];
+          setTfAnswers((prev) => {
+            const copy = { ...prev };
+            delete copy[q.id];
+            return copy;
+          });
+          resetCount++;
+        }
+      });
+    } else if (exerciseFormat === 'short_answer') {
+      currentSaQuestions.forEach((q) => {
+        const userVal = (saAnswers[q.id] || '').trim().toLowerCase().replace(/,/g, '.');
+        const isCorrect = q.acceptableAnswers.some(
+          (ans) => ans.trim().toLowerCase().replace(/,/g, '.') === userVal || String(q.correctValue) === userVal
+        );
+        if (evaluatedQuestions[q.id] && !isCorrect) {
+          delete nextEvaluated[q.id];
+          setSaAnswers((prev) => {
+            const copy = { ...prev };
+            delete copy[q.id];
+            return copy;
+          });
+          resetCount++;
+        }
+      });
+    }
+
+    setEvaluatedQuestions(nextEvaluated);
+    if (resetCount > 0) {
+      alert(`Đã đặt lại ${resetCount} câu chưa chính xác. Em hãy bấm "Gợi ý từng bước" để xem hướng tháo gỡ và làm lại nhé!`);
+    } else {
+      alert('Tất cả các câu em đã làm đều đạt kết quả đúng! Không có câu sai cần kiểm tra lại.');
+    }
   };
 
   // AI Sinh Bài Tập Tự Động (Gemini 3.8 Flash)
@@ -241,6 +501,30 @@ Trả về ĐÚNG định dạng JSON theo schema:
     ...(currentLesson?.exercises?.shortAnswer || []),
   ];
 
+  // Đếm câu sai hiện tại để hiện nút "Luyện lại câu sai"
+  const hasWrongAnswers = (() => {
+    if (exerciseFormat === 'multiple_choice') {
+      return currentMcQuestions.some((q) => evaluatedQuestions[q.id] && mcAnswers[q.id] !== q.correctAnswer);
+    }
+    if (exerciseFormat === 'true_false') {
+      return currentTfQuestions.some((q) => {
+        if (!evaluatedQuestions[q.id]) return false;
+        const userAns = tfAnswers[q.id] || { a: null, b: null, c: null, d: null };
+        return !q.statements.every((st) => userAns[st.subId] === st.isCorrect);
+      });
+    }
+    if (exerciseFormat === 'short_answer') {
+      return currentSaQuestions.some((q) => {
+        if (!evaluatedQuestions[q.id]) return false;
+        const userVal = (saAnswers[q.id] || '').trim().toLowerCase().replace(/,/g, '.');
+        return !q.acceptableAnswers.some(
+          (ans) => ans.trim().toLowerCase().replace(/,/g, '.') === userVal || String(q.correctValue) === userVal
+        );
+      });
+    }
+    return false;
+  })();
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       
@@ -267,17 +551,46 @@ Trả về ĐÚNG định dạng JSON theo schema:
           </h2>
         </div>
 
-        {/* Nút bấm mở ô chọn Khối / Chương / Bài */}
-        <button
-          type="button"
-          onClick={() => setShowLessonSelectorModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-700/20 transition-all cursor-pointer shrink-0"
-        >
-          <Layers className="w-4 h-4" />
-          <span>Chọn Bài Học Khác</span>
-          <ChevronDown className="w-4 h-4 ml-0.5" />
-        </button>
+        {/* Nút bấm điều hướng & Hồ sơ */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowSkillModal(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-xs"
+            title="Xem hồ sơ kỹ năng và lịch sử lượt làm bài"
+          >
+            <BarChart3 className="w-4 h-4 text-amber-600" />
+            <span>Hồ Sơ Kỹ Năng & Lịch Sử ({attemptHistory.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowLessonSelectorModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-700/20 transition-all cursor-pointer"
+          >
+            <Layers className="w-4 h-4" />
+            <span>Chọn Bài Học Khác</span>
+            <ChevronDown className="w-4 h-4 ml-0.5" />
+          </button>
+        </div>
       </div>
+
+      {/* Thông báo đã ghi nhận lượt làm */}
+      {showAttemptNotice && (
+        <div className="p-3.5 rounded-2xl bg-emerald-600 text-white shadow-lg flex items-center justify-between animate-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
+            <ShieldCheck className="w-5 h-5 text-emerald-200" />
+            <span>Đã lưu thành công lượt làm bài vào Hồ Sơ Kỹ Năng và đồng bộ với Thầy/Cô!</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSkillModal(true)}
+            className="px-3 py-1 bg-white text-emerald-900 rounded-xl text-xs font-black shadow-xs hover:bg-emerald-50 cursor-pointer"
+          >
+            Xem ngay
+          </button>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 2. TAB ĐIỀU HƯỚNG NỘI DUNG: LÍ THUYẾT VS. BÀI TẬP TỰ LUYỆN                 */}
@@ -349,103 +662,115 @@ Trả về ĐÚNG định dạng JSON theo schema:
                   {section.title}
                 </h4>
 
-                <div className="text-xs sm:text-[13px] text-slate-800 leading-relaxed">
+                <div className="text-xs sm:text-[13px] text-slate-700 leading-relaxed font-sans">
                   <MathRenderer content={section.content} />
                 </div>
 
-                {/* Bảng công thức then chốt của mục */}
-                {section.keyFormulas && section.keyFormulas.length > 0 && (
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-1.5">
-                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block">
-                      Công thức then chốt:
+                {section.formulas && section.formulas.length > 0 && (
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2">
+                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
+                      Công thức trọng tâm:
                     </span>
-                    <div className="space-y-1 pl-2">
-                      {section.keyFormulas.map((kf, kfIdx) => (
-                        <div key={kfIdx} className="text-xs font-mono text-emerald-900">
-                          <MathRenderer content={`$${kf}$`} inline />
+                    <div className="space-y-1.5">
+                      {section.formulas.map((f, fIdx) => (
+                        <div
+                          key={fIdx}
+                          className="bg-white px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm font-mono text-emerald-900"
+                        >
+                          <MathRenderer content={f} />
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Lưu ý quan trọng */}
-                {section.importantNotes && section.importantNotes.length > 0 && (
-                  <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/90 text-amber-950 text-xs space-y-1">
-                    <span className="font-bold flex items-center gap-1.5 text-amber-900">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                      Lưu ý sư phạm quan trọng:
+                {section.examples && section.examples.length > 0 && (
+                  <div className="pt-2 space-y-3">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <GraduationCap className="w-4 h-4 text-emerald-600" />
+                      Ví dụ minh họa chuẩn SGK:
                     </span>
-                    <ul className="list-disc pl-5 space-y-0.5 text-[11px] text-amber-900/90">
-                      {section.importantNotes.map((note, nIdx) => (
-                        <li key={nIdx}>{note}</li>
+                    <div className="grid grid-cols-1 gap-3">
+                      {section.examples.map((ex, eIdx) => (
+                        <div
+                          key={eIdx}
+                          className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200/80 space-y-2 text-xs sm:text-[13px]"
+                        >
+                          <div className="font-bold text-amber-950">
+                            <MathRenderer content={ex.problem} />
+                          </div>
+                          <div className="text-slate-800 leading-relaxed border-t border-amber-200/60 pt-2">
+                            <span className="font-semibold text-slate-900">Lời giải chi tiết:</span>
+                            <div className="mt-1">
+                              <MathRenderer content={ex.solution} />
+                            </div>
+                          </div>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
               </div>
             ))}
           </div>
 
-          {/* Vùng trũng kiến thức & Bẫy sai lầm thường gặp */}
-          {currentLesson.theory.commonMistakes && currentLesson.theory.commonMistakes.length > 0 && (
-            <div className="bg-rose-50/60 border border-rose-200 rounded-3xl p-5 space-y-2">
-              <h4 className="text-xs sm:text-sm font-bold text-rose-900 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-600" />
-                Vùng Trũng Kiến Thức & Bẫy Sai Lầm Học Sinh Hay Mắc Phải:
-              </h4>
-              <ul className="list-disc pl-5 space-y-1 text-xs text-rose-950 leading-relaxed">
-                {currentLesson.theory.commonMistakes.map((mis, mIdx) => (
-                  <li key={mIdx}>{mis}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Nút chuyển sang làm bài tập */}
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('exercises')}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-700/20 cursor-pointer"
+            >
+              <span>Đã hiểu lí thuyết, bắt đầu luyện bài tập</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 4. NỘI DUNG TAB 2: BÀI TẬP VỚI 3 LỰA CHỌN DẠNG THỨC                      */}
+      {/* 4. NỘI DUNG TAB 2: BÀI TẬP TỰ LUYỆN (3 DẠNG THỨC GDPT 2018)              */}
       {/* ========================================================================= */}
-      {activeTab === 'exercises' && currentLesson && (
+      {activeTab === 'exercises' && (
         <div className="space-y-6">
           
-          {/* Thanh lựa chọn 3 Dạng thức Câu hỏi chuẩn 2025 */}
-          <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+          {/* Sub-bar: Chọn 1 trong 3 Dạng Thức Bài Tập + Các Hành Động P1 */}
+          <div className="bg-white rounded-3xl p-3 sm:p-4 border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              {/* Lựa chọn 1: Trắc nghiệm khách quan */}
               <button
                 type="button"
                 onClick={() => setExerciseFormat('multiple_choice')}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                   exerciseFormat === 'multiple_choice'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
                 }`}
               >
                 <span>Trắc nghiệm khách quan</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20">Biết, Hiểu</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-mono">
+                  {currentMcQuestions.length} câu
+                </span>
               </button>
 
-              {/* Lựa chọn 2: Câu hỏi Đúng / Sai */}
               <button
                 type="button"
                 onClick={() => setExerciseFormat('true_false')}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                   exerciseFormat === 'true_false'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
                 }`}
               >
                 <span>Câu hỏi Đúng / Sai</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20">Biết, Hiểu, Vận dụng</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-mono">
+                  {currentTfQuestions.length} câu
+                </span>
               </button>
 
-              {/* Lựa chọn 3: Trả lời ngắn (Thực tế mô hình hóa) */}
               <button
                 type="button"
                 onClick={() => setExerciseFormat('short_answer')}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                   exerciseFormat === 'short_answer'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
@@ -458,17 +783,41 @@ Trả về ĐÚNG định dạng JSON theo schema:
               </button>
             </div>
 
-            {/* Nút AI Sinh Thêm Bài Tập Mới */}
-            <button
-              type="button"
-              onClick={handleGenerateAiExercise}
-              disabled={isGeneratingAi}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer disabled:opacity-50"
-              title="Gọi Cố vấn AI tạo câu hỏi mới cùng dạng"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-purple-200 animate-spin" />
-              <span>{isGeneratingAi ? 'AI đang tạo bài mới...' : 'AI sinh thêm bài tập'}</span>
-            </button>
+            {/* Cụm công cụ hành động P1: Lưu lượt làm, Luyện lại câu sai, AI sinh bài */}
+            <div className="flex flex-wrap items-center gap-2">
+              {hasWrongAnswers && (
+                <button
+                  type="button"
+                  onClick={handleRetestWrongQuestions}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 font-bold text-xs transition-all cursor-pointer shadow-xs"
+                  title="Đặt lại các câu sai để kiểm tra lại sự tiến bộ sau khi xem lời giải"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Kiểm tra lại câu sai</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSaveAttempt}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+                title="Ghi nhận lượt làm và cập nhật điểm vào hồ sơ kỹ năng của em"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-teal-200" />
+                <span>Lưu lượt làm & Cập nhật điểm</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGenerateAiExercise}
+                disabled={isGeneratingAi}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                title="Gọi Cố vấn AI tạo câu hỏi mới cùng dạng"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-200 animate-spin" />
+                <span>{isGeneratingAi ? 'AI đang tạo...' : 'AI sinh thêm bài'}</span>
+              </button>
+            </div>
           </div>
 
           {/* ------------------------------------------------------------- */}
@@ -485,6 +834,8 @@ Trả về ĐÚNG định dạng JSON theo schema:
                 const userChoice = mcAnswers[q.id];
                 const isEvaluated = evaluatedQuestions[q.id];
                 const isCorrect = userChoice === q.correctAnswer;
+                const hintLevel = hintsRevealed[q.id] || 0;
+                const hints = getQuestionHints(q, 'multiple_choice');
 
                 return (
                   <div
@@ -522,7 +873,7 @@ Trả về ĐÚNG định dạng JSON theo schema:
                     </div>
 
                     {/* Đề bài */}
-                    <div className="text-xs sm:text-[13px] text-slate-900 leading-relaxed">
+                    <div className="text-xs sm:text-[13px] text-slate-900 leading-relaxed font-sans">
                       <MathRenderer content={q.question} />
                     </div>
 
@@ -565,9 +916,47 @@ Trả về ĐÚNG định dạng JSON theo schema:
                       })}
                     </div>
 
-                    {/* Nút nộp bài & Xem lời giải */}
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                      <div>
+                    {/* Hộp gợi ý từng bước (P1) */}
+                    {hintLevel > 0 && (
+                      <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-950 space-y-1.5 animate-in fade-in duration-150">
+                        <div className="font-bold flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-amber-900">
+                            <Lightbulb className="w-4 h-4 text-amber-600" />
+                            Gợi ý sư phạm từng bước (Đã mở {hintLevel}/3 bước):
+                          </span>
+                          {hintLevel < 3 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRevealHint(q.id)}
+                              className="text-[11px] text-amber-800 underline font-bold cursor-pointer"
+                            >
+                              Mở tiếp bước sau &rarr;
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-1.5 pt-1">
+                          {hintLevel >= 1 && (
+                            <div className="pl-2 border-l-2 border-amber-500 text-slate-800">
+                              <MathRenderer content={hints.step1} />
+                            </div>
+                          )}
+                          {hintLevel >= 2 && (
+                            <div className="pl-2 border-l-2 border-amber-500 text-slate-800">
+                              <MathRenderer content={hints.step2} />
+                            </div>
+                          )}
+                          {hintLevel >= 3 && (
+                            <div className="pl-2 border-l-2 border-amber-500 text-slate-800">
+                              <MathRenderer content={hints.step3} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Nút nộp bài, Gợi ý từng bước & Xem lời giải */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                      <div className="flex items-center gap-2">
                         {!isEvaluated ? (
                           <button
                             type="button"
@@ -587,17 +976,27 @@ Trả về ĐÚNG định dạng JSON theo schema:
                             Làm lại câu này
                           </button>
                         )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleRevealHint(q.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-semibold cursor-pointer"
+                          title="Mở gợi ý hướng dẫn từng bước"
+                        >
+                          <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
+                          <span>{hintLevel === 0 ? '💡 Gợi ý từng bước' : `Gợi ý (Bước ${hintLevel}/3)`}</span>
+                        </button>
                       </div>
                     </div>
 
-                    {/* Lời giải Socratic chi tiết */}
+                    {/* Lời giải chi tiết */}
                     {isEvaluated && (
                       <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 text-xs space-y-1.5 animate-in fade-in duration-150">
                         <span className="font-bold text-emerald-900 flex items-center gap-1.5">
                           <Lightbulb className="w-4 h-4 text-emerald-600" />
                           Hướng dẫn giải sư phạm chi tiết:
                         </span>
-                        <div className="text-slate-800 leading-relaxed pl-1">
+                        <div className="text-slate-800 leading-relaxed pl-1 font-sans">
                           <MathRenderer content={q.explanation} />
                         </div>
                       </div>
@@ -609,18 +1008,32 @@ Trả về ĐÚNG định dạng JSON theo schema:
           )}
 
           {/* ------------------------------------------------------------- */}
-          {/* DẠNG 2: CÂU HỎI ĐÚNG / SAI (4 MỆNH ĐỀ A, B, C, D)               */}
+          {/* DẠNG 2: CÂU HỎI ĐÚNG / SAI (4 Ý a, b, c, d)                    */}
           {/* ------------------------------------------------------------- */}
           {exerciseFormat === 'true_false' && (
             <div className="space-y-4">
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
-                <span>Dạng thức II: Câu hỏi Đúng/Sai (Mỗi câu gồm 4 mệnh đề a, b, c, d độc lập).</span>
-                <span className="font-bold text-slate-700">Tổng: {currentTfQuestions.length} câu</span>
+              <div className="p-3 bg-teal-50/60 border border-teal-200 rounded-2xl text-xs text-teal-900 flex items-center justify-between">
+                <span>
+                  <strong>Dạng thức II: Câu hỏi Đúng / Sai</strong> (Gồm 1 ngữ cảnh toán học và 4 mệnh đề a, b, c, d).
+                </span>
+                <span className="font-bold text-teal-950">Tổng: {currentTfQuestions.length} bài toán</span>
               </div>
 
               {currentTfQuestions.map((q, idx) => {
                 const userStatements = tfAnswers[q.id] || { a: null, b: null, c: null, d: null };
                 const isEvaluated = evaluatedQuestions[q.id];
+                const hintLevel = hintsRevealed[q.id] || 0;
+                const hints = getQuestionHints(q, 'true_false');
+
+                // Tính điểm chuẩn Bộ GD&ĐT: 1 ý đúng: 0.1đ; 2 ý: 0.25đ; 3 ý: 0.5đ; 4 ý: 1.0đ
+                const correctCount = q.statements.filter(
+                  (st) => userStatements[st.subId] === st.isCorrect
+                ).length;
+                let awardedPoints = 0;
+                if (correctCount === 1) awardedPoints = 0.1;
+                else if (correctCount === 2) awardedPoints = 0.25;
+                else if (correctCount === 3) awardedPoints = 0.5;
+                else if (correctCount === 4) awardedPoints = 1.0;
 
                 return (
                   <div
@@ -633,69 +1046,80 @@ Trả về ĐÚNG định dạng JSON theo schema:
                           {idx + 1}
                         </span>
                         <span className="text-xs font-bold text-slate-800">Câu {idx + 1} (Đúng / Sai)</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-600">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-teal-50 text-teal-800 border border-teal-200">
                           {q.cognitiveLevel}
                         </span>
                       </div>
+
+                      {isEvaluated && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-700">
+                            Đúng {correctCount}/4 ý
+                          </span>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                            +{awardedPoints}đ
+                          </span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Ngữ cảnh đề bài */}
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs sm:text-[13px] text-slate-900 leading-relaxed font-sans">
+                    {/* Ngữ cảnh bài toán */}
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs sm:text-[13px] text-slate-900 leading-relaxed font-sans">
                       <MathRenderer content={q.context} />
                     </div>
 
                     {/* 4 Mệnh đề a, b, c, d */}
-                    <div className="space-y-2.5 pt-1">
+                    <div className="space-y-2.5">
                       {q.statements.map((st) => {
-                        const val = userStatements[st.subId];
-                        const isStatementEvaluated = isEvaluated && val !== null;
-                        const isCorrectAnswer = val === st.isCorrect;
+                        const userVal = userStatements[st.subId];
+                        const isStatementCorrect = userVal === st.isCorrect;
 
                         return (
                           <div
                             key={st.subId}
-                            className={`p-3 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-all ${
-                              isStatementEvaluated
-                                ? isCorrectAnswer
-                                  ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950'
-                                  : 'bg-rose-50/70 border-rose-300 text-rose-950'
+                            className={`p-3 sm:p-3.5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-colors ${
+                              isEvaluated
+                                ? isStatementCorrect
+                                  ? 'bg-emerald-50/70 border-emerald-300'
+                                  : 'bg-rose-50/70 border-rose-300'
                                 : 'bg-white border-slate-200'
                             }`}
                           >
                             <div className="flex items-start gap-2.5 flex-1">
-                              <span className="font-bold text-xs uppercase text-slate-700 mt-0.5">
+                              <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-800 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                                 {st.subId})
                               </span>
-                              <div className="text-xs sm:text-[13px] text-slate-800 flex-1">
+                              <div className="text-xs sm:text-[13px] text-slate-900 font-sans">
                                 <MathRenderer content={st.content} />
                               </div>
                             </div>
 
-                            {/* Cặp nút Đúng / Sai */}
-                            <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                            {/* Cặp nút ĐÚNG / SAI */}
+                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
                               <button
                                 type="button"
                                 onClick={() => !isEvaluated && handleSelectTf(q.id, st.subId, true)}
                                 disabled={isEvaluated}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                  val === true
+                                  userVal === true
                                     ? 'bg-emerald-600 text-white shadow-xs'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                                 }`}
                               >
-                                Đúng
+                                ĐÚNG
                               </button>
+
                               <button
                                 type="button"
                                 onClick={() => !isEvaluated && handleSelectTf(q.id, st.subId, false)}
                                 disabled={isEvaluated}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                                  val === false
+                                  userVal === false
                                     ? 'bg-rose-600 text-white shadow-xs'
-                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                                 }`}
                               >
-                                Sai
+                                SAI
                               </button>
                             </div>
                           </div>
@@ -703,26 +1127,75 @@ Trả về ĐÚNG định dạng JSON theo schema:
                       })}
                     </div>
 
-                    {/* Nút kiểm tra */}
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                      {!isEvaluated ? (
+                    {/* Hộp gợi ý từng bước (P1) */}
+                    {hintLevel > 0 && (
+                      <div className="p-3.5 rounded-2xl bg-teal-50/80 border border-teal-200 text-xs text-teal-950 space-y-1.5 animate-in fade-in duration-150">
+                        <div className="font-bold flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-teal-900">
+                            <Lightbulb className="w-4 h-4 text-teal-600" />
+                            Gợi ý từng bước (Đã mở {hintLevel}/3 bước):
+                          </span>
+                          {hintLevel < 3 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRevealHint(q.id)}
+                              className="text-[11px] text-teal-800 underline font-bold cursor-pointer"
+                            >
+                              Mở tiếp bước sau &rarr;
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-1.5 pt-1">
+                          {hintLevel >= 1 && (
+                            <div className="pl-2 border-l-2 border-teal-500 text-slate-800">
+                              <MathRenderer content={hints.step1} />
+                            </div>
+                          )}
+                          {hintLevel >= 2 && (
+                            <div className="pl-2 border-l-2 border-teal-500 text-slate-800">
+                              <MathRenderer content={hints.step2} />
+                            </div>
+                          )}
+                          {hintLevel >= 3 && (
+                            <div className="pl-2 border-l-2 border-teal-500 text-slate-800">
+                              <MathRenderer content={hints.step3} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Nút kiểm tra & Gợi ý */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                      <div className="flex items-center gap-2">
+                        {!isEvaluated ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCheckQuestion(q.id)}
+                            className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold cursor-pointer"
+                          >
+                            Kiểm tra kết quả 4 mệnh đề
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleResetQuestion(q.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Làm lại câu này
+                          </button>
+                        )}
+
                         <button
                           type="button"
-                          onClick={() => handleCheckQuestion(q.id)}
-                          className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold cursor-pointer"
+                          onClick={() => handleRevealHint(q.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-300 text-xs font-semibold cursor-pointer"
                         >
-                          Kiểm tra kết quả 4 mệnh đề
+                          <Lightbulb className="w-3.5 h-3.5 text-teal-600" />
+                          <span>{hintLevel === 0 ? '💡 Gợi ý từng bước' : `Gợi ý (Bước ${hintLevel}/3)`}</span>
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleResetQuestion(q.id)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Làm lại câu này
-                        </button>
-                      )}
+                      </div>
                     </div>
 
                     {/* Lời giải thích từng ý */}
@@ -739,7 +1212,7 @@ Trả về ĐÚNG định dạng JSON theo schema:
                                 {st.isCorrect ? 'ĐÚNG' : 'SAI'}
                               </span>
                             </span>
-                            <div className="text-slate-600">
+                            <div className="text-slate-600 font-sans">
                               <MathRenderer content={st.explanation} />
                             </div>
                           </div>
@@ -767,11 +1240,12 @@ Trả về ĐÚNG định dạng JSON theo schema:
               {currentSaQuestions.map((q, idx) => {
                 const userVal = saAnswers[q.id] || '';
                 const isEvaluated = evaluatedQuestions[q.id];
-                // So sánh mềm đáp án
                 const cleanUserVal = userVal.trim().toLowerCase().replace(/,/g, '.');
                 const isCorrect = q.acceptableAnswers.some(
                   (ans) => ans.trim().toLowerCase().replace(/,/g, '.') === cleanUserVal || String(q.correctValue) === cleanUserVal
                 );
+                const hintLevel = hintsRevealed[q.id] || 0;
+                const hints = getQuestionHints(q, 'short_answer');
 
                 return (
                   <div
@@ -813,6 +1287,44 @@ Trả về ĐÚNG định dạng JSON theo schema:
                       <MathRenderer content={q.problem} />
                     </div>
 
+                    {/* Hộp gợi ý từng bước (P1) */}
+                    {hintLevel > 0 && (
+                      <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-xs text-amber-950 space-y-1.5 animate-in fade-in duration-150">
+                        <div className="font-bold flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-amber-900">
+                            <Lightbulb className="w-4 h-4 text-amber-600" />
+                            Gợi ý mô hình hóa từng bước (Đã mở {hintLevel}/3 bước):
+                          </span>
+                          {hintLevel < 3 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRevealHint(q.id)}
+                              className="text-[11px] text-amber-800 underline font-bold cursor-pointer"
+                            >
+                              Mở tiếp bước sau &rarr;
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-1.5 pt-1">
+                          {hintLevel >= 1 && (
+                            <div className="pl-2 border-l-2 border-amber-500 text-slate-800">
+                              <MathRenderer content={hints.step1} />
+                            </div>
+                          )}
+                          {hintLevel >= 2 && (
+                            <div className="pl-2 border-l-2 border-amber-500 text-slate-800">
+                              <MathRenderer content={hints.step2} />
+                            </div>
+                          )}
+                          {hintLevel >= 3 && (
+                            <div className="pl-2 border-l-2 border-amber-500 text-slate-800">
+                              <MathRenderer content={hints.step3} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Ô nhập đáp án số */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
                       <span className="text-xs font-bold text-slate-700 shrink-0">
@@ -832,25 +1344,36 @@ Trả về ĐÚNG định dạng JSON theo schema:
                         )}
                       </div>
 
-                      {!isEvaluated ? (
+                      <div className="flex items-center gap-2">
+                        {!isEvaluated ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCheckQuestion(q.id)}
+                            disabled={!userVal.trim()}
+                            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-all disabled:opacity-40 cursor-pointer shrink-0"
+                          >
+                            Chấm điểm
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleResetQuestion(q.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold cursor-pointer shrink-0"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Làm lại
+                          </button>
+                        )}
+
                         <button
                           type="button"
-                          onClick={() => handleCheckQuestion(q.id)}
-                          disabled={!userVal.trim()}
-                          className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-all disabled:opacity-40 cursor-pointer shrink-0"
+                          onClick={() => handleRevealHint(q.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-semibold cursor-pointer shrink-0"
                         >
-                          Chấm điểm
+                          <Lightbulb className="w-3.5 h-3.5 text-amber-700" />
+                          <span>{hintLevel === 0 ? '💡 Gợi ý từng bước' : `Gợi ý (${hintLevel}/3)`}</span>
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleResetQuestion(q.id)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold cursor-pointer shrink-0"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Làm lại
-                        </button>
-                      )}
+                      </div>
                     </div>
 
                     {/* Lời giải & Các bước mô hình hóa toán học */}
@@ -877,7 +1400,7 @@ Trả về ĐÚNG định dạng JSON theo schema:
                           </div>
                         )}
 
-                        <div className="pt-1 text-slate-800 leading-relaxed border-t border-amber-200/80">
+                        <div className="pt-1 text-slate-800 leading-relaxed border-t border-amber-200/80 font-sans">
                           <MathRenderer content={q.explanation} />
                         </div>
                       </div>
@@ -892,7 +1415,115 @@ Trả về ĐÚNG định dạng JSON theo schema:
       )}
 
       {/* ========================================================================= */}
-      {/* 5. MODAL CHỌN KHỐI - CHƯƠNG - BÀI HỌC (HIỂN THỊ TRỰC QUAN TỪNG CẤP)        */}
+      {/* 5. MODAL HỒ SƠ KỸ NĂNG & LỊCH SỬ LƯỢT LÀM (P1)                             */}
+      {/* ========================================================================= */}
+      {showSkillModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-2xl bg-amber-50 text-amber-700">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                    Hồ Sơ Kỹ Năng & Lịch Sử Tự Học (Chuẩn GDPT 2018)
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Học sinh: {student?.name || 'Em học sinh'} • Điểm hiện tại: {student?.latestScore ?? 8.0}/10
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowSkillModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Nhiệm vụ tiếp theo */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-xs space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-emerald-950">
+                <Target className="w-4 h-4 text-emerald-600" />
+                <span>Nhiệm vụ tiếp theo dành cho em:</span>
+              </div>
+              <p className="text-slate-700 leading-relaxed">
+                {attemptHistory.length === 0
+                  ? 'Hoàn thành ít nhất 1 bài tập trắc nghiệm hoặc bài toán thực tế mô hình hóa để hệ thống phân tích năng lực toán học của em.'
+                  : attemptHistory[0].score >= 8.0
+                  ? 'Năng lực vận dụng rất tốt! Tiếp tục thử sức với dạng "Trả lời ngắn (Toán thực tế)" ở các bài học tiếp theo để chinh phục điểm 9 - 10.'
+                  : 'Cần củng cố thêm các bước suy luận: Bấm "Gợi ý từng bước" trước khi nộp bài và làm lại các câu chưa chính xác.'}
+              </p>
+            </div>
+
+            {/* Thống kê tổng quan */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-center">
+                <span className="text-[11px] text-slate-500 block">Lượt làm bài</span>
+                <span className="text-lg font-black text-slate-900">{attemptHistory.length}</span>
+              </div>
+              <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-center">
+                <span className="text-[11px] text-emerald-700 block">Điểm trung bình</span>
+                <span className="text-lg font-black text-emerald-900">
+                  {attemptHistory.length > 0
+                    ? (attemptHistory.reduce((acc, cur) => acc + cur.score, 0) / attemptHistory.length).toFixed(1)
+                    : student?.latestScore ?? 8.0}
+                  /10
+                </span>
+              </div>
+              <div className="p-3.5 bg-purple-50 rounded-2xl border border-purple-200 text-center">
+                <span className="text-[11px] text-purple-700 block">Vùng cần ôn</span>
+                <span className="text-lg font-black text-purple-900">{student?.gapsCount ?? 0}</span>
+              </div>
+            </div>
+
+            {/* Danh sách từng lượt làm đã lưu */}
+            <div className="space-y-3">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                <History className="w-4 h-4 text-slate-600" />
+                Chi tiết từng lượt làm bài đã lưu:
+              </span>
+
+              {attemptHistory.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-slate-200">
+                  Chưa có lượt làm bài nào được lưu. Em hãy làm bài tập và bấm <strong>"Lưu lượt làm & Cập nhật điểm"</strong> nhé!
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {attemptHistory.map((item) => (
+                    <div
+                      key={item.id}
+                      className="p-3 rounded-2xl border border-slate-200 bg-white flex items-center justify-between text-xs hover:border-slate-300 transition-colors"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="font-bold text-slate-900">{item.lessonTitle}</div>
+                        <div className="text-[11px] text-slate-500">
+                          Khối {item.grade} • {item.format === 'multiple_choice' ? 'Trắc nghiệm' : item.format === 'true_false' ? 'Đúng/Sai' : 'Trả lời ngắn'} • {item.date}
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className={`font-black text-sm ${item.score >= 8 ? 'text-emerald-600' : item.score >= 5 ? 'text-amber-600' : 'text-rose-600'}`}>
+                          {item.score}/10 đ
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          Đúng {item.correctAnswers}/{item.totalQuestions} câu
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 6. MODAL CHỌN KHỐI - CHƯƠNG - BÀI HỌC (HIỂN THỊ TRỰC QUAN TỪNG CẤP)        */}
       {/* ========================================================================= */}
       {showLessonSelectorModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">

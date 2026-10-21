@@ -149,19 +149,23 @@ export default function App() {
     saveAuthSession({ ...authSession, teacherUser: newTeacher });
   };
 
-  // Cập nhật Lớp học
+  // Cập nhật Lớp học (An toàn tuyệt đối khi teacher null)
   const handleUpdateClasses = (newClasses: ClassRoom[]) => {
     setClasses(newClasses);
-    saveClassesForTeacher(teacher.id, newClasses);
-    const updatedTeacher = { ...teacher, classList: newClasses };
-    setTeacher(updatedTeacher);
-    saveTeacherProfile(updatedTeacher);
+    if (teacher?.id) {
+      saveClassesForTeacher(teacher.id, newClasses);
+      const updatedTeacher = { ...teacher, classList: newClasses };
+      setTeacher(updatedTeacher);
+      saveTeacherProfile(updatedTeacher);
+    }
   };
 
-  // Cập nhật Danh sách Học sinh của Giáo viên
+  // Cập nhật Danh sách Học sinh của Giáo viên (An toàn khi teacher null)
   const handleUpdateStudents = (newStudents: StudentAccount[]) => {
     setStudents(newStudents);
-    saveStudentsForTeacher(teacher.id, newStudents);
+    if (teacher?.id) {
+      saveStudentsForTeacher(teacher.id, newStudents);
+    }
 
     // Nếu học sinh đang đăng nhập nằm trong danh sách, cập nhật luôn
     if (currentStudent) {
@@ -183,11 +187,14 @@ export default function App() {
     setCurrentStudent(updatedStudent);
   };
 
-  // Cập nhật Bài nộp
+  // Cập nhật Bài nộp (Lưu đúng theo giáo viên phụ trách kể cả khi học sinh đang làm bài và teacher === null)
   const handleNewSubmission = (newSub: MathSubmission) => {
     const updated = [newSub, ...submissions];
     setSubmissions(updated);
-    saveSubmissionsForTeacher(teacher.id, updated);
+    const targetTeacherId = teacher?.id || currentStudent?.teacherId || newSub.classId || 'teacher_default';
+    if (targetTeacherId) {
+      saveSubmissionsForTeacher(targetTeacherId, updated);
+    }
   };
 
   const handleUpdateNotes = (submissionId: string, notes: string[]) => {
@@ -195,7 +202,10 @@ export default function App() {
       s.id === submissionId ? { ...s, studentNotes: notes } : s
     );
     setSubmissions(updated);
-    saveSubmissionsForTeacher(teacher.id, updated);
+    const targetTeacherId = teacher?.id || currentStudent?.teacherId || 'teacher_default';
+    if (targetTeacherId) {
+      saveSubmissionsForTeacher(targetTeacherId, updated);
+    }
   };
 
   const handleMarkResolved = (submissionId: string) => {
@@ -203,7 +213,10 @@ export default function App() {
       s.id === submissionId ? { ...s, hasResolvedMistake: true } : s
     );
     setSubmissions(updated);
-    saveSubmissionsForTeacher(teacher.id, updated);
+    const targetTeacherId = teacher?.id || currentStudent?.teacherId || 'teacher_default';
+    if (targetTeacherId) {
+      saveSubmissionsForTeacher(targetTeacherId, updated);
+    }
   };
 
   // Đăng xuất hoàn toàn và trở về trang bìa

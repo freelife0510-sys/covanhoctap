@@ -2028,27 +2028,31 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
               "shortAnswer": [
                 {
                   "id": "11-c7-b1-sa1",
-                  "problem": "Một chuyển động xác định bởi phương trình $s(t) = t^3 - 3t^2 + 5t$ với $t$ tính bằng giây, $s$ tính bằng mét. Tính gia tốc của chuyển động tại thời điểm vận tốc triệt tiêu ($v = 0$). (m/s²)",
-                  "correctValue": 0,
+                  "problem": "Một chuyển động xác định bởi phương trình $s(t) = t^3 - 3t^2 + 2$ với $t$ tính bằng giây ($t > 0$), $s$ tính bằng mét. Tính gia tốc của chuyển động tại thời điểm vận tốc triệt tiêu ($v = 0$). (m/s²)",
+                  "correctValue": 6,
                   "acceptableAnswers": [
-                    "0",
-                    "không có",
-                    "0 m/s^2"
+                    "6",
+                    "6 m/s^2",
+                    "6m/s2"
                   ],
                   "unit": "m/s²",
                   "cognitiveLevel": "Vận dụng",
                   "isRealWorldModeling": true,
                   "modelingSteps": [
                     {
-                      "stepName": "Bước 1: Tính vận tốc",
-                      "description": "$v(t) = s'(t) = 3t^2 - 6t + 5$."
+                      "stepName": "Bước 1: Tính vận tốc tức thời",
+                      "description": "$v(t) = s'(t) = 3t^2 - 6t$."
                     },
                     {
-                      "stepName": "Bước 2: Xét nghiệm $v = 0$",
-                      "description": "$\\Delta' = 9 - 15 = -6 < 0 \\implies v(t) > 0, \\forall t$, vận tốc không bao giờ triệt tiêu (kết quả bằng 0)."
+                      "stepName": "Bước 2: Tìm thời điểm vận tốc triệt tiêu",
+                      "description": "$v(t) = 0 \\iff 3t(t - 2) = 0 \\implies t = 2\\text{ s}$ (vì $t > 0$)."
+                    },
+                    {
+                      "stepName": "Bước 3: Tính gia tốc tức thời",
+                      "description": "$a(t) = v'(t) = s''(t) = 6t - 6 \\implies a(2) = 6 \\cdot 2 - 6 = 6\\text{ m/s}^2$."
                     }
                   ],
-                  "explanation": "Vận tốc không bao giờ triệt tiêu vì $\\Delta < 0$."
+                  "explanation": "Vận tốc triệt tiêu tại thời điểm $t = 2\\text{ s}$. Gia tốc tức thời tương ứng là $a(2) = 6(2) - 6 = 6\\text{ m/s}^2$."
                 }
               ]
             }

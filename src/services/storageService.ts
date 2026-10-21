@@ -402,6 +402,7 @@ export function loginTeacherWithGoogle(
 // QUẢN LÝ LỚP HỌC THEO GIÁO VIÊN (ISOLATION)
 // ----------------------------------------------------
 export function getClassesForTeacher(teacherId: string): ClassRoom[] {
+  if (!teacherId) return [];
   try {
     const key = `${STORAGE_KEYS.CLASSES_PREFIX}${teacherId}`;
     const raw = localStorage.getItem(key);
@@ -413,6 +414,7 @@ export function getClassesForTeacher(teacherId: string): ClassRoom[] {
 }
 
 export function saveClassesForTeacher(teacherId: string, classes: ClassRoom[]): void {
+  if (!teacherId) return;
   try {
     const key = `${STORAGE_KEYS.CLASSES_PREFIX}${teacherId}`;
     localStorage.setItem(key, JSON.stringify(classes));
@@ -425,6 +427,7 @@ export function saveClassesForTeacher(teacherId: string, classes: ClassRoom[]): 
 // QUẢN LÝ HỌC SINH THEO GIÁO VIÊN & THEO LỚP
 // ----------------------------------------------------
 export function getStudentsForTeacher(teacherId: string): StudentAccount[] {
+  if (!teacherId) return [];
   try {
     const key = `math_students_teacher_${teacherId}`;
     const raw = localStorage.getItem(key);
@@ -436,6 +439,7 @@ export function getStudentsForTeacher(teacherId: string): StudentAccount[] {
 }
 
 export function saveStudentsForTeacher(teacherId: string, students: StudentAccount[]): void {
+  if (!teacherId) return;
   try {
     const key = `math_students_teacher_${teacherId}`;
     localStorage.setItem(key, JSON.stringify(students));
@@ -702,6 +706,7 @@ export function saveStudentToGlobalPool(student: StudentAccount): void {
 // QUẢN LÝ BÀI NỘP / PHÂN TÍCH CHẨN ĐOÁN CỦA LỚP
 // ----------------------------------------------------
 export function getSubmissionsForTeacher(teacherId: string): MathSubmission[] {
+  if (!teacherId) return [];
   try {
     const key = `${STORAGE_KEYS.SUBMISSIONS_PREFIX}${teacherId}`;
     const raw = localStorage.getItem(key);
@@ -713,6 +718,7 @@ export function getSubmissionsForTeacher(teacherId: string): MathSubmission[] {
 }
 
 export function saveSubmissionsForTeacher(teacherId: string, subs: MathSubmission[]): void {
+  if (!teacherId) return;
   try {
     const key = `${STORAGE_KEYS.SUBMISSIONS_PREFIX}${teacherId}`;
     localStorage.setItem(key, JSON.stringify(subs));
@@ -753,7 +759,7 @@ export function loginStudentWithCredentials(
   const allStudents = getAllGlobalStudents();
 
   // Tìm kiếm theo ID hoặc Tên (khớp chính xác, khớp không dấu, hoặc khớp mã)
-  let matched = allStudents.find((st) => {
+  const matched = allStudents.find((st) => {
     const matchClass = classId ? st.classId === classId : true;
     if (!matchClass) return false;
 
@@ -780,48 +786,23 @@ export function loginStudentWithCredentials(
     return false;
   });
 
-  // NẾU CHƯA TÌM THẤY TRONG DANH SÁCH:
-  // Tự động kích hoạt ngay tài khoản học sinh mang tên này để học sinh không bao giờ bị chặn truy cập
+  // TỪ CHỐI NẾU KHÔNG TÌM THẤY HỌC SINH (Bảo mật tài khoản giáo viên/học sinh)
   if (!matched) {
-    const newStudentId = `HS-${Date.now().toString(36).toUpperCase()}`;
-    matched = {
-      id: newStudentId,
-      studentCode: newStudentId,
-      name: cleanId,
-      classId: 'class-longhs-12a1',
-      className: 'Lớp 12A1 (Toán THPT)',
-      teacherId: 'teacher_longhs',
-      teacherName: 'Thầy Hồ Sỹ Long (0943278804)',
-      password: cleanPass,
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(cleanId)}`,
-      school: 'Trường THPT Chuẩn GDPT 2018',
-      status: 'needs_remedy',
-      latestScore: 6.0,
-      gapsCount: 1,
-      detectedGaps: ['Cần rèn luyện phương pháp giải bài tập Toán THPT GDPT 2018'],
-      notesFromTeacher: 'Thầy/Cô và Cố vấn AI luôn sẵn sàng đồng hành cùng em trong học tập môn Toán!',
-      assignedTasks: [],
-      testHistory: [],
-      createdAt: new Date().toLocaleDateString('vi-VN'),
+    return {
+      success: false,
+      errorMessage: 'Không tìm thấy tài khoản học sinh mang mã hoặc tên này. Vui lòng kiểm tra lại thông tin Thầy/Cô đã cấp hoặc liên hệ Giáo viên phụ trách!',
     };
-    saveStudentToGlobalPool(matched);
   }
 
-  // KIỂM TRA MẬT KHẨU LINH HOẠT:
-  // Chấp nhận: mật khẩu của học sinh, mật khẩu mặc định (123, 123456, 12345678), hoặc cập nhật theo mật khẩu học sinh vừa nhập
-  const validPasswords = [
-    (matched.password || '').trim(),
-    '123',
-    '123456',
-    '12345678',
-    'admin',
-  ];
-  const isMatch = validPasswords.includes(cleanPass) || cleanPass === (matched.password || '').trim();
+  // KIỂM TRA MẬT KHẨU CHÍNH XÁC (Từ chối sai mật khẩu, không tự ý ghi đè):
+  const studentPass = (matched.password || '').trim();
+  const isMatch = cleanPass === studentPass || (!studentPass && (cleanPass === '123' || cleanPass === '123456'));
 
   if (!isMatch) {
-    // Nếu nhập mật khẩu mới, linh hoạt cập nhật mật khẩu cho học sinh
-    matched.password = cleanPass;
-    saveStudentToGlobalPool(matched);
+    return {
+      success: false,
+      errorMessage: 'Mật khẩu không chính xác. Vui lòng nhập đúng mật khẩu được cấp hoặc liên hệ Thầy/Cô để được cấp lại!',
+    };
   }
 
   // Lưu phiên đăng nhập

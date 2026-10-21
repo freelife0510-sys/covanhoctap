@@ -201,8 +201,15 @@ Do đó, hàm số đồng biến trên các khoảng $(-\\infty; -1)$ và $(-1;
 
   // =========================================================================
   // 3. CHUYÊN ĐỀ: HÀM SỐ MŨ & LOGARIT
+  // Chỉ chẩn đoán khi CÓ BẰNG CHỨNG học sinh làm bài nộp và bỏ sót điều kiện
   // =========================================================================
-  if (normProb.includes('log') && (normSol.includes('loại') === false && !normSol.includes('điều kiện'))) {
+  const hasStudentWork = normSol.trim().length > 15 && normSol.trim() !== normProb.trim();
+  const hasLogMistake =
+    hasStudentWork &&
+    normProb.includes('log') &&
+    (normSol.includes('x = -') || normSol.includes('x=-') || normSol.includes('nhận x') || (normSol.includes('kết luận') && !normSol.includes('điều kiện') && !normSol.includes('đk')));
+
+  if (hasLogMistake) {
     return {
       isCorrect: false,
       errorCategory: 'Chưa đặt điều kiện xác định',
@@ -241,6 +248,7 @@ Do đó, hàm số đồng biến trên các khoảng $(-\\infty; -1)$ và $(-1;
 
   // =========================================================================
   // 4. CHUYÊN ĐỀ: PHƯƠNG TRÌNH VÔ TỈ (CHỨA CĂN THỨC)
+  // Chỉ kết luận lỗi khi CÓ BẰNG CHỨNG HỌC SINH NHẬN NGHIỆM NGOẠI LAI (không phán đoán theo từ khóa)
   // =========================================================================
   const isRadicalProb = normProb.includes('sqrt') || normProb.includes('căn') || normProb.includes('√');
   const hasExtraneousWithoutReject =
@@ -250,7 +258,7 @@ Do đó, hàm số đồng biến trên các khoảng $(-\\infty; -1)$ và $(-1;
     !normSol.includes('loại nghiệm 3') &&
     !normSol.includes('loại x=3');
 
-  if (isRadicalProb && (hasExtraneousWithoutReject || normSol.length < 50)) {
+  if (isRadicalProb && hasExtraneousWithoutReject) {
     return {
       isCorrect: false,
       errorCategory: 'Chưa đặt điều kiện xác định',
@@ -373,10 +381,11 @@ Do đó, hàm số đồng biến trên các khoảng $(-\\infty; -1)$ và $(-1;
 
   // =========================================================================
   // 7. MẶC ĐỊNH SƯ PHẠM CHUẨN MỰC
+  // Không gán nhãn lỗi sai khi thiếu bằng chứng hoặc khi học sinh chỉ nêu câu hỏi
   // =========================================================================
   return {
-    isCorrect: false,
-    errorCategory: 'Nhầm lẫn định lý/công thức',
+    isCorrect: true,
+    errorCategory: undefined,
     diagnosticResult: {
       theorySummary: 'Trong giải toán THPT chuẩn GDPT 2018, mỗi bước suy luận cần dựa trên một định lý hoặc công thức biến đổi tương đương có điều kiện kèm theo.',
       formulasNeeded: [
@@ -389,7 +398,7 @@ Do đó, hàm số đồng biến trên các khoảng $(-\\infty; -1)$ và $(-1;
         '?3: Hãy thay thử một giá trị nghiệm vừa tìm được vào đề bài ban đầu để tự kiểm chứng tính đúng đắn.',
       ],
       keyInsight: 'Cần phân tích kỹ đề bài và lập mô hình phương pháp giải từng bước trước khi biến đổi.',
-      pedagogicalAdviceForTeacher: 'Cần lưu ý học sinh rèn thói quen đọc kỹ yêu cầu bài toán, xác định rõ chuyên đề và các định lý then chốt trước khi bắt tay vào giải.',
+      pedagogicalAdviceForTeacher: 'Khuyến khích học sinh rèn thói quen đọc kỹ yêu cầu bài toán, xác định rõ chuyên đề và các định lý then chốt trước khi bắt tay vào giải.',
       followUpProblems: [
         {
           id: 501,
