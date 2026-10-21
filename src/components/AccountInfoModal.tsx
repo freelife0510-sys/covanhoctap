@@ -118,15 +118,17 @@ export const AccountInfoModal: React.FC<AccountInfoModalProps> = ({
               </div>
             )}
 
-            <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/60">
-              <span className="text-xs text-slate-500 flex items-center gap-2">
-                <School className="w-3.5 h-3.5 text-slate-400" />
-                Đơn vị trường:
-              </span>
-              <span className="text-xs font-medium text-slate-800">
-                {isTeacher ? (teacher?.school || 'THPT Chuẩn GDPT 2018') : (student?.school || 'THPT Chuẩn GDPT 2018')}
-              </span>
-            </div>
+            {(isTeacher ? teacher?.school : student?.school) && (
+              <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/60">
+                <span className="text-xs text-slate-500 flex items-center gap-2">
+                  <School className="w-3.5 h-3.5 text-slate-400" />
+                  Đơn vị trường:
+                </span>
+                <span className="text-xs font-medium text-slate-800">
+                  {isTeacher ? teacher?.school : student?.school}
+                </span>
+              </div>
+            )}
 
             {/* Trạng thái xác thực */}
             <div className="flex items-center justify-between">

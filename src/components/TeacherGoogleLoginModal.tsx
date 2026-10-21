@@ -58,7 +58,7 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
 
       const username = emailToUse.split('@')[0];
       const displayName = targetName?.trim() || teacherNameInput.trim() || `Giáo viên ${username.charAt(0).toUpperCase() + username.slice(1)}`;
-      const schoolName = 'Trường THPT Chuẩn GDPT 2018';
+      const schoolName = '';
 
       const { teacher } = loginTeacherWithGoogle(emailToUse, displayName, schoolName);
       setIsLoading(false);

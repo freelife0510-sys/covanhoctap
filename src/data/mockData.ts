@@ -11,7 +11,7 @@ export const DEFAULT_TEACHER: Teacher = {
   id: 'teacher-default',
   email: 'giaovien@gmail.com',
   name: 'Giáo viên Bộ môn Toán',
-  school: 'THPT Chuẩn GDPT 2018',
+  school: '',
   classList: MOCK_CLASSES,
 };
 
@@ -25,7 +25,7 @@ export const DEFAULT_STUDENT: Student = {
   teacherId: 'teacher-default',
   teacherName: 'Giáo viên Bộ môn Toán',
   password: '123',
-  school: 'THPT Chuyên Chuẩn GDPT 2018',
+  school: '',
   status: 'needs_remedy',
   latestScore: 5.5,
   gapsCount: 2,

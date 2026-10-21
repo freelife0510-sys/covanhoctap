@@ -678,10 +678,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Số điện thoại / Zalo: <strong className="text-slate-900 font-mono">0943278804</strong></span>
               </div>
-              <div className="flex items-center gap-2">
-                <School className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Trường THPT Chuẩn GDPT 2018</span>
-              </div>
             </div>
           </div>
 
