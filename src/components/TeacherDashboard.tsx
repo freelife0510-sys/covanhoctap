@@ -432,7 +432,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
               Cổng Quản trị Lớp học
             </span>
-            {teacher.email && teacher.email !== 'giaovien@gmail.com' && (
+            {teacher.email && (
               <span className="text-xs text-slate-500 font-mono">
                 {teacher.email}
               </span>

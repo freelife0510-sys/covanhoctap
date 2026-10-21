@@ -357,19 +357,13 @@ export function loginTeacherWithGoogle(
   avatar?: string
 ): { teacher: Teacher; isNewTeacher: boolean } {
   const cleanEmail = email.trim().toLowerCase();
-  
-  // Ánh xạ tài khoản của Thầy Hồ Sỹ Long
-  let teacherId = `teacher_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
-  let defaultTeacherName = name?.trim() || `Giáo viên ${cleanEmail.split('@')[0]}`;
-  
-  if (
-    cleanEmail === 'freelife0510@gmail.com' ||
-    cleanEmail.includes('freelife') ||
-    cleanEmail.includes('hosylong') ||
-    cleanEmail.includes('thaylong')
-  ) {
-    teacherId = 'teacher_longhs';
-    defaultTeacherName = 'Thầy Hồ Sỹ Long (0943278804)';
+  const teacherId = `teacher_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+
+  // Chuẩn hóa tên giáo viên hiển thị mặc định nếu chưa truyền vào
+  let defaultTeacherName = name?.trim();
+  if (!defaultTeacherName) {
+    const username = cleanEmail.split('@')[0];
+    defaultTeacherName = `Thầy/Cô (${username})`;
   }
 
   const allTeachers = getSavedTeachers();
@@ -383,61 +377,36 @@ export function loginTeacherWithGoogle(
       email: cleanEmail,
       name: defaultTeacherName,
       school: school?.trim() || '',
-      avatar: avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
+      avatar: avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}&gender=male`,
       classList: [],
       createdAt: new Date().toLocaleDateString('vi-VN'),
     };
     saveTeacherProfile(teacher);
 
-    // Nếu là Thầy Hồ Sỹ Long, khởi tạo sẵn lớp và học sinh mẫu
-    if (teacherId === 'teacher_longhs') {
-      const defaultClasses: ClassRoom[] = [
-        {
-          id: 'class-longhs-12a1',
-          teacherId: 'teacher_longhs',
-          name: 'Lớp 12A1 (Toán THPT)',
-          grade: '12',
-          academicYear: '2025 - 2026',
-          classCode: '12A1-2026',
-          studentCount: 5,
-          notes: 'Lớp chuyên đề Toán THPT Chuẩn GDPT 2018',
-          createdAt: new Date().toLocaleDateString('vi-VN'),
-        },
-      ];
-      saveClassesForTeacher('teacher_longhs', defaultClasses);
-      saveStudentsForTeacher('teacher_longhs', DEFAULT_SYSTEM_STUDENTS);
-    } else {
-      saveClassesForTeacher(teacher.id, []);
-      saveStudentsForTeacher(teacher.id, []);
-      saveSubmissionsForTeacher(teacher.id, []);
-    }
+    // Tự động khởi tạo dữ liệu mẫu với ID và tên của chính Thầy/Cô này
+    const sample = createSampleDataForTeacher(teacher);
+    saveClassesForTeacher(teacher.id, sample.classes);
+    saveStudentsForTeacher(teacher.id, sample.students);
+    saveSubmissionsForTeacher(teacher.id, sample.submissions);
+    teacher.classList = sample.classes;
+    saveTeacherProfile(teacher);
   } else {
-    // Cập nhật tên/trường nếu có
-    if (name && name !== teacher.name) teacher.name = name;
-    if (school && school !== teacher.school) teacher.school = school;
-    if (avatar && avatar !== teacher.avatar) teacher.avatar = avatar;
+    // Đảm bảo email và thông tin luôn được cập nhật chính xác theo tài khoản đăng nhập hiện tại
+    teacher.email = cleanEmail;
+    if (name && name.trim()) teacher.name = name.trim();
+    if (school && school.trim()) teacher.school = school.trim();
+    if (avatar) teacher.avatar = avatar;
     saveTeacherProfile(teacher);
 
-    // Đảm bảo lớp học và học sinh mẫu của Thầy Hồ Sỹ Long luôn tồn tại
-    if (teacherId === 'teacher_longhs') {
-      const existingClasses = getClassesForTeacher('teacher_longhs');
-      if (existingClasses.length === 0) {
-        const defaultClasses: ClassRoom[] = [
-          {
-            id: 'class-longhs-12a1',
-            teacherId: 'teacher_longhs',
-            name: 'Lớp 12A1 (Toán THPT)',
-            grade: '12',
-            academicYear: '2025 - 2026',
-            classCode: '12A1-2026',
-            studentCount: 5,
-            notes: 'Lớp chuyên đề Toán THPT Chuẩn GDPT 2018',
-            createdAt: new Date().toLocaleDateString('vi-VN'),
-          },
-        ];
-        saveClassesForTeacher('teacher_longhs', defaultClasses);
-        saveStudentsForTeacher('teacher_longhs', DEFAULT_SYSTEM_STUDENTS);
-      }
+    // Nếu giáo viên chưa có lớp nào, khởi tạo lớp mẫu cho họ
+    const existingClasses = getClassesForTeacher(teacher.id);
+    if (!existingClasses || existingClasses.length === 0) {
+      const sample = createSampleDataForTeacher(teacher);
+      saveClassesForTeacher(teacher.id, sample.classes);
+      saveStudentsForTeacher(teacher.id, sample.students);
+      saveSubmissionsForTeacher(teacher.id, sample.submissions);
+      teacher.classList = sample.classes;
+      saveTeacherProfile(teacher);
     }
   }
 

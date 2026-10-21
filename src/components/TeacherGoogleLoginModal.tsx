@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   UserCheck, 
   Sparkles, 
@@ -18,7 +18,11 @@ import {
   User,
   Check,
   History,
-  LogIn
+  LogIn,
+  RefreshCw,
+  SlidersHorizontal,
+  ChevronDown,
+  Info
 } from 'lucide-react';
 import { Teacher } from '../types/index.ts';
 import { loginTeacherWithGoogle, saveTeacherProfile } from '../services/storageService.ts';
@@ -33,7 +37,32 @@ interface SavedTeacherAccount {
   email: string;
   name: string;
   avatar: string;
+  school?: string;
   lastLogin?: string;
+}
+
+// Google Client ID từ biến môi trường (nếu có cấu hình trên Vercel / .env)
+const ENV_GOOGLE_CLIENT_ID = 
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID) || '';
+
+// Hàm giải mã JWT an toàn từ Google Identity Services
+function decodeGoogleJwt(token: string): any {
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      window
+        .atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (err) {
+    console.error('Lỗi giải mã Google JWT:', err);
+    return null;
+  }
 }
 
 export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = ({
@@ -41,51 +70,102 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
   onClose,
   onLoginSuccess,
 }) => {
-  // Email & Họ tên nhập vào
+  // Email & Họ tên người dùng nhập
   const [emailInput, setEmailInput] = useState('');
   const [nameInput, setNameInput] = useState('');
-  
+  const [schoolInput, setSchoolInput] = useState('');
+
   // Danh sách các tài khoản giáo viên đã từng đăng nhập trên thiết bị này
   const [savedAccounts, setSavedAccounts] = useState<SavedTeacherAccount[]>(() => {
     try {
       const raw = localStorage.getItem('math_saved_teacher_accounts');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {
-      console.warn('Lỗi đọc tài khoản giáo viên:', e);
+      console.warn('Lỗi đọc tài khoản giáo viên đã lưu:', e);
     }
-    return [
-      {
-        email: 'freelife0510@gmail.com',
-        name: 'Thầy Hồ Sỹ Long',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=freelife0510&gender=male',
-      },
-    ];
+    return [];
   });
+
+  // Client ID lưu trên máy
+  const [clientIdInput, setClientIdInput] = useState(() => {
+    return localStorage.getItem('math_google_client_id') || ENV_GOOGLE_CLIENT_ID || '';
+  });
+  const [showConfigClientId, setShowConfigClientId] = useState(false);
+  const [isGsiReady, setIsGsiReady] = useState(false);
 
   const [activeMode, setActiveMode] = useState<'input' | 'list'>('input');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successNotice, setSuccessNotice] = useState('');
 
+  const googleBtnContainerRef = useRef<HTMLDivElement>(null);
+
+  // Khi modal mở: Khởi tạo dữ liệu và dịch vụ Google Identity Services
   useEffect(() => {
-    if (isOpen) {
-      setErrorMessage('');
-      const lastEmail = localStorage.getItem('google_teacher_email') || '';
-      if (lastEmail) {
-        setEmailInput(lastEmail);
-        const lastName = localStorage.getItem('google_teacher_name') || '';
-        if (lastName) setNameInput(lastName);
-      }
-      // Nếu có sẵn danh sách tài khoản đã lưu, hiển thị bảng chọn tiện lợi
-      if (savedAccounts.length > 0) {
-        setActiveMode('list');
+    if (!isOpen) return;
+
+    setErrorMessage('');
+    setSuccessNotice('');
+
+    // Đọc danh sách tài khoản đã lưu mới nhất
+    try {
+      const raw = localStorage.getItem('math_saved_teacher_accounts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSavedAccounts(parsed);
+          setActiveMode('list');
+        } else {
+          setSavedAccounts([]);
+          setActiveMode('input');
+        }
       } else {
+        setSavedAccounts([]);
         setActiveMode('input');
       }
+    } catch {
+      setActiveMode('input');
     }
-  }, [isOpen]);
+
+    const lastEmail = localStorage.getItem('google_teacher_email') || '';
+    if (lastEmail) {
+      setEmailInput(lastEmail);
+      const lastName = localStorage.getItem('google_teacher_name') || '';
+      if (lastName) setNameInput(lastName);
+    }
+
+    // Khởi tạo Google Identity Services Button nếu Client ID hợp lệ
+    const effectiveClientId = (clientIdInput || ENV_GOOGLE_CLIENT_ID).trim();
+    if (effectiveClientId && (window as any).google?.accounts?.id) {
+      try {
+        (window as any).google.accounts.id.initialize({
+          client_id: effectiveClientId,
+          callback: handleGoogleJwtCallback,
+          auto_select: false,
+          cancel_on_tap_outside: true,
+        });
+
+        if (googleBtnContainerRef.current) {
+          googleBtnContainerRef.current.innerHTML = '';
+          (window as any).google.accounts.id.renderButton(googleBtnContainerRef.current, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            text: 'continue_with',
+            shape: 'pill',
+            logo_alignment: 'left',
+            width: 320,
+          });
+        }
+        setIsGsiReady(true);
+      } catch (err) {
+        console.warn('Lỗi init Google Identity Services:', err);
+      }
+    }
+  }, [isOpen, clientIdInput]);
 
   if (!isOpen) return null;
 
@@ -99,56 +179,144 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
     }
   };
 
-  // Xử lý đăng nhập bằng bất kỳ tài khoản Gmail nào
-  const handleConnectGoogle = (targetEmail?: string, targetName?: string) => {
-    setErrorMessage('');
-    const rawEmail = (targetEmail || emailInput).trim();
-    
-    if (!rawEmail) {
-      setErrorMessage('Vui lòng nhập địa chỉ Gmail của Thầy/Cô!');
+  // Hoàn tất quá trình đăng nhập và đồng bộ
+  const completeTeacherLogin = (email: string, name: string, avatarUrl: string, school: string = '') => {
+    const cleanEmail = email.trim().toLowerCase();
+    const displayName = name.trim() || `Thầy/Cô (${cleanEmail.split('@')[0]})`;
+    const finalAvatar = avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}&gender=male`;
+
+    // Lưu phiên đăng nhập
+    localStorage.setItem('google_teacher_email', cleanEmail);
+    localStorage.setItem('google_teacher_name', displayName);
+    localStorage.setItem('google_teacher_avatar', finalAvatar);
+
+    // Cập nhật danh sách tài khoản ghi nhớ trên máy
+    const updatedAccounts: SavedTeacherAccount[] = [
+      {
+        email: cleanEmail,
+        name: displayName,
+        avatar: finalAvatar,
+        school: school || '',
+        lastLogin: new Date().toLocaleDateString('vi-VN'),
+      },
+      ...savedAccounts.filter((a) => a.email.toLowerCase() !== cleanEmail),
+    ];
+    persistSavedAccounts(updatedAccounts);
+
+    // Khởi tạo không gian làm việc của giáo viên này
+    const { teacher } = loginTeacherWithGoogle(cleanEmail, displayName, school, finalAvatar);
+    saveTeacherProfile(teacher);
+
+    setIsLoading(false);
+    onLoginSuccess(teacher);
+    onClose();
+  };
+
+  // Xử lý callback khi đăng nhập bằng Google GSI Button (JWT ID token)
+  const handleGoogleJwtCallback = (response: any) => {
+    if (!response?.credential) {
+      setErrorMessage('Không nhận được thông tin xác thực từ Google. Vui lòng thử lại!');
+      return;
+    }
+    const decoded = decodeGoogleJwt(response.credential);
+    if (!decoded || !decoded.email) {
+      setErrorMessage('Không thể giải mã dữ liệu tài khoản Google.');
       return;
     }
 
-    // Tự động bổ sung @gmail.com nếu giáo viên chỉ gõ username
+    setIsLoading(true);
+    completeTeacherLogin(
+      decoded.email,
+      decoded.name || decoded.given_name || '',
+      decoded.picture || '',
+      ''
+    );
+  };
+
+  // Kích hoạt Google OAuth2 Popup chuẩn (Token Client)
+  const handleTriggerGoogleOAuthPopup = () => {
+    setErrorMessage('');
+    const effectiveClientId = (clientIdInput || ENV_GOOGLE_CLIENT_ID).trim();
+
+    if (!effectiveClientId) {
+      setShowConfigClientId(true);
+      setErrorMessage('Chưa có Google Client ID. Thầy/Cô có thể nhập Client ID bên dưới hoặc đăng nhập trực tiếp bằng Gmail ngay.');
+      return;
+    }
+
+    const google = (window as any).google;
+    if (!google?.accounts?.oauth2) {
+      setErrorMessage('Thư viện Google Identity chưa tải xong. Thầy/Cô có thể đăng nhập bằng Gmail ngay bên dưới.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: effectiveClientId,
+        scope: 'email profile openid',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse?.error) {
+            setIsLoading(false);
+            setErrorMessage(`Google OAuth: ${tokenResponse.error_description || tokenResponse.error}`);
+            return;
+          }
+
+          if (tokenResponse?.access_token) {
+            try {
+              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+              });
+              const profile = await res.json();
+              if (profile?.email) {
+                completeTeacherLogin(
+                  profile.email,
+                  profile.name || profile.given_name || '',
+                  profile.picture || '',
+                  ''
+                );
+              } else {
+                setIsLoading(false);
+                setErrorMessage('Không thể lấy thông tin email từ Google.');
+              }
+            } catch (err: any) {
+              setIsLoading(false);
+              setErrorMessage('Lỗi kết nối UserInfo từ Google: ' + err.message);
+            }
+          } else {
+            setIsLoading(false);
+          }
+        },
+      });
+
+      client.requestAccessToken({ prompt: 'select_account' });
+    } catch (err: any) {
+      setIsLoading(false);
+      console.error('Lỗi mở popup Google:', err);
+      setErrorMessage('Không thể mở popup Google: ' + (err.message || 'Vui lòng kiểm tra Client ID'));
+    }
+  };
+
+  // Đăng nhập kết nối bằng tài khoản Gmail trực tiếp
+  const handleDirectGmailLogin = (e?: React.FormEvent, targetEmail?: string, targetName?: string) => {
+    if (e) e.preventDefault();
+    setErrorMessage('');
+
+    const rawEmail = (targetEmail || emailInput).trim();
+    if (!rawEmail) {
+      setErrorMessage('Vui lòng nhập địa chỉ Gmail hoặc Google Workspace của Thầy/Cô!');
+      return;
+    }
+
     const fullEmail = rawEmail.includes('@') ? rawEmail.toLowerCase() : `${rawEmail.toLowerCase()}@gmail.com`;
     const username = fullEmail.split('@')[0];
     const displayName = (targetName || nameInput).trim() || `Thầy/Cô (${username})`;
     const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${fullEmail}&gender=male`;
 
     setIsLoading(true);
-
     setTimeout(() => {
-      try {
-        // Lưu thông tin phiên đăng nhập
-        localStorage.setItem('google_teacher_email', fullEmail);
-        localStorage.setItem('google_teacher_name', displayName);
-        localStorage.setItem('google_teacher_avatar', avatarUrl);
-
-        // Cập nhật vào danh sách các tài khoản trên máy
-        const updatedList: SavedTeacherAccount[] = [
-          {
-            email: fullEmail,
-            name: displayName,
-            avatar: avatarUrl,
-            lastLogin: new Date().toLocaleDateString('vi-VN'),
-          },
-          ...savedAccounts.filter((a) => a.email.toLowerCase() !== fullEmail),
-        ];
-        persistSavedAccounts(updatedList);
-
-        // Khởi tạo/kết nối không gian làm việc của giáo viên này
-        const { teacher } = loginTeacherWithGoogle(fullEmail, displayName, '', avatarUrl);
-        saveTeacherProfile(teacher);
-
-        setIsLoading(false);
-        onLoginSuccess(teacher);
-        onClose();
-      } catch (err) {
-        console.error('Lỗi kết nối tài khoản:', err);
-        setIsLoading(false);
-        setErrorMessage('Không thể kết nối tài khoản lúc này. Vui lòng thử lại!');
-      }
-    }, 200);
+      completeTeacherLogin(fullEmail, displayName, avatarUrl, schoolInput);
+    }, 150);
   };
 
   // Xóa một tài khoản khỏi danh sách ghi nhớ trên máy
@@ -161,8 +329,17 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
     }
   };
 
+  // Lưu Client ID cấu hình tùy chỉnh
+  const handleSaveClientId = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = clientIdInput.trim();
+    localStorage.setItem('math_google_client_id', trimmed);
+    setSuccessNotice('Đã lưu Google Client ID thành công!');
+    setTimeout(() => setSuccessNotice(''), 3000);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/65 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
         
         {/* Nút đóng */}
@@ -201,14 +378,14 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
             Đăng nhập Giáo viên bằng Google
           </h2>
           <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
-            Hỗ trợ <strong>tất cả các tài khoản Gmail</strong> & Google Workspace để kết nối không gian quản trị lớp học
+            Hỗ trợ <strong>tài khoản Gmail & Google Workspace</strong> để kết nối không gian quản trị độc lập
           </p>
         </div>
 
         {/* Modal Body */}
         <div className="p-6 space-y-4">
 
-          {/* Thông báo lỗi nếu có */}
+          {/* Thông báo lỗi */}
           {errorMessage && (
             <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 animate-in fade-in">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -216,8 +393,16 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
             </div>
           )}
 
+          {/* Thông báo thành công */}
+          {successNotice && (
+            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <span>{successNotice}</span>
+            </div>
+          )}
+
           {/* ========================================================================= */}
-          {/* VIEW 1: DANH SÁCH TÀI KHOẢN ĐÃ LƯU TRÊN THIẾT BỊ (ACCOUNT CHOOSER)       */}
+          {/* VIEW 1: DANH SÁCH TÀI KHOẢN ĐÃ LƯU TRÊN MÁY (ACCOUNT CHOOSER)             */}
           {/* ========================================================================= */}
           {activeMode === 'list' && savedAccounts.length > 0 && (
             <div className="space-y-3 animate-in fade-in duration-150">
@@ -230,16 +415,16 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
                   onClick={() => setActiveMode('input')}
                   className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer"
                 >
-                  + Nhập Gmail khác
+                  + Đăng nhập tài khoản khác
                 </button>
               </div>
 
               {/* Danh sách tài khoản có thể bấm chọn */}
-              <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-2xs">
+              <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-2xs max-h-56 overflow-y-auto">
                 {savedAccounts.map((acc) => (
                   <div
                     key={acc.email}
-                    onClick={() => handleConnectGoogle(acc.email, acc.name)}
+                    onClick={() => handleDirectGmailLogin(undefined, acc.email, acc.name)}
                     className="p-3.5 hover:bg-slate-50 flex items-center justify-between gap-3 cursor-pointer transition-colors group"
                   >
                     <div className="flex items-center gap-3 min-w-0">
@@ -263,7 +448,7 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
                         type="button"
                         onClick={(e) => handleRemoveSavedAccount(e, acc.email)}
                         className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-all cursor-pointer"
-                        title="Xóa tài khoản này khỏi máy này"
+                        title="Xóa tài khoản này khỏi thiết bị"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -283,10 +468,10 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
                   </div>
                   <div>
                     <div className="text-xs sm:text-sm font-bold text-slate-800">
-                      Đăng nhập bằng tài khoản Gmail khác
+                      Đăng nhập bằng tài khoản Google khác
                     </div>
                     <div className="text-[11px] text-slate-500">
-                      Bất kỳ tài khoản Google cá nhân hoặc trường học
+                      Bất kỳ tài khoản cá nhân @gmail.com hoặc trường học
                     </div>
                   </div>
                 </button>
@@ -295,80 +480,32 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
           )}
 
           {/* ========================================================================= */}
-          {/* VIEW 2: Ô NHẬP GMAIL CHO BẤT KỲ GIÁO VIÊN NÀO                             */}
+          {/* VIEW 2: FORM ĐĂNG NHẬP GOOGLE CHUẨN                                      */}
           {/* ========================================================================= */}
           {activeMode === 'input' && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleConnectGoogle();
-              }}
-              className="space-y-3.5 animate-in fade-in duration-150"
-            >
+            <div className="space-y-4 animate-in fade-in duration-150">
+              
               {savedAccounts.length > 0 && (
                 <div className="flex items-center justify-between pb-1">
                   <span className="text-xs font-bold text-slate-800">
-                    Nhập Gmail của Thầy/Cô để kết nối:
+                    Đăng nhập tài khoản mới:
                   </span>
                   <button
                     type="button"
                     onClick={() => setActiveMode('list')}
                     className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer"
                   >
-                    &larr; Xem tài khoản đã lưu
+                    &larr; Xem tài khoản đã lưu ({savedAccounts.length})
                   </button>
                 </div>
               )}
 
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  Địa chỉ Gmail của Thầy/Cô:
-                </label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={(e) => setEmailInput(e.target.value)}
-                    placeholder="ví dụ: thaylong@gmail.com"
-                    className="w-full text-xs sm:text-sm font-medium pl-10 pr-3.5 py-3 rounded-2xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white shadow-2xs"
-                    autoFocus
-                    required
-                  />
-                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                </div>
-                <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-400">
-                  <span>Gợi ý:</span>
-                  <button
-                    type="button"
-                    onClick={() => setEmailInput((prev) => (prev ? (prev.includes('@') ? prev : `${prev}@gmail.com`) : ''))}
-                    className="text-emerald-700 font-bold hover:underline cursor-pointer"
-                  >
-                    @gmail.com
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  Họ và tên hiển thị (tùy chọn):
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={nameInput}
-                    onChange={(e) => setNameInput(e.target.value)}
-                    placeholder="ví dụ: Thầy Hồ Sỹ Long"
-                    className="w-full text-xs sm:text-sm font-medium pl-10 pr-3.5 py-3 rounded-2xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white shadow-2xs"
-                  />
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
-                </div>
-              </div>
-
-              {/* Nút bấm kết nối chính */}
+              {/* Nút bấm Đăng nhập Google Popup (Official Google OAuth) */}
               <button
-                type="submit"
+                type="button"
+                onClick={handleTriggerGoogleOAuthPopup}
                 disabled={isLoading}
-                className="w-full flex items-center justify-center gap-3 px-5 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold shadow-md hover:shadow-lg transition-all duration-150 cursor-pointer text-xs sm:text-sm disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-white hover:bg-slate-50 border-2 border-slate-300 hover:border-emerald-500 text-slate-800 font-bold shadow-xs hover:shadow-md transition-all duration-150 cursor-pointer text-xs sm:text-sm group"
               >
                 <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                   <path
@@ -388,21 +525,140 @@ export const TeacherGoogleLoginModal: React.FC<TeacherGoogleLoginModalProps> = (
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                <span>
-                  {isLoading ? 'Đang kết nối tài khoản...' : 'Đăng nhập kết nối bằng Google'}
+                <span className="group-hover:text-emerald-800 transition-colors">
+                  {isLoading ? 'Đang kết nối tài khoản...' : 'Tiếp tục với Google Popup'}
                 </span>
               </button>
-            </form>
+
+              {/* Khung chứa nút Google Identity Services render tự động nếu có Client ID */}
+              <div ref={googleBtnContainerRef} className="flex justify-center empty:hidden"></div>
+
+              {/* Divider Hoặc */}
+              <div className="relative flex items-center justify-center">
+                <div className="border-t border-slate-200 w-full"></div>
+                <span className="bg-white px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+                  hoặc đăng nhập nhanh bằng Gmail
+                </span>
+                <div className="border-t border-slate-200 w-full"></div>
+              </div>
+
+              {/* Form nhập địa chỉ Gmail trực tiếp */}
+              <form onSubmit={handleDirectGmailLogin} className="space-y-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Địa chỉ Gmail của Thầy/Cô:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={emailInput}
+                      onChange={(e) => setEmailInput(e.target.value)}
+                      placeholder="ví dụ: thaynguyen@gmail.com"
+                      className="w-full text-xs sm:text-sm font-medium pl-10 pr-3.5 py-2.5 rounded-2xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white shadow-2xs"
+                      autoFocus
+                      required
+                    />
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-400">
+                    <span>Điền nhanh:</span>
+                    <button
+                      type="button"
+                      onClick={() => setEmailInput((prev) => (prev ? (prev.includes('@') ? prev : `${prev}@gmail.com`) : ''))}
+                      className="text-emerald-700 font-bold hover:underline cursor-pointer"
+                    >
+                      @gmail.com
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Họ và tên hiển thị (tùy chọn):
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      placeholder="ví dụ: Thầy Nguyễn Văn Nam"
+                      className="w-full text-xs sm:text-sm font-medium pl-10 pr-3.5 py-2.5 rounded-2xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white shadow-2xs"
+                    />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold shadow-md hover:shadow-lg transition-all cursor-pointer text-xs sm:text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <LogIn className="w-4 h-4 text-emerald-400" />
+                  <span>
+                    {isLoading ? 'Đang đồng bộ...' : 'Đăng nhập vào Không gian Quản trị'}
+                  </span>
+                </button>
+              </form>
+            </div>
           )}
 
+          {/* ========================================================================= */}
+          {/* CẤU HÌNH GOOGLE CLIENT ID (TÙY CHỌN CHO QUẢN TRỊ VIÊN)                     */}
+          {/* ========================================================================= */}
+          <div className="border-t border-slate-100 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowConfigClientId(!showConfigClientId)}
+              className="w-full flex items-center justify-between text-[11px] font-bold text-slate-500 hover:text-slate-800 transition-colors py-1 cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5">
+                <Settings className="w-3.5 h-3.5 text-slate-400" />
+                Cấu hình Google OAuth Client ID (Tùy chọn)
+              </span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showConfigClientId ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showConfigClientId && (
+              <form onSubmit={handleSaveClientId} className="mt-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2 animate-in fade-in">
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Để kích hoạt popup Google nguyên bản trên tên miền chính thức, Thầy/Cô có thể nhập Google Client ID từ Google Cloud Console:
+                </p>
+                <input
+                  type="text"
+                  value={clientIdInput}
+                  onChange={(e) => setClientIdInput(e.target.value)}
+                  placeholder="...apps.googleusercontent.com"
+                  className="w-full text-[11px] font-mono px-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <div className="flex items-center justify-between pt-1">
+                  <a
+                    href="https://console.cloud.google.com/apis/credentials"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] text-emerald-700 hover:underline flex items-center gap-1"
+                  >
+                    <span>Lấy Client ID</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                  <button
+                    type="submit"
+                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-[11px] cursor-pointer"
+                  >
+                    Lưu cấu hình
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
           {/* Ghi chú bảo mật & phân quyền */}
-          <div className="border-t border-slate-100 pt-3 text-[11px] text-slate-500 leading-relaxed space-y-1">
+          <div className="border-t border-slate-100 pt-2 text-[11px] text-slate-500 leading-relaxed space-y-1">
             <div className="flex items-center gap-1.5 font-bold text-slate-700">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>Bảo mật & Phân quyền độc lập theo Gmail:</span>
             </div>
             <p>
-              Mỗi giáo viên đăng nhập bằng Gmail sẽ sở hữu không gian quản lý lớp học, học sinh và phiếu chẩn đoán riêng biệt, hoàn toàn bảo mật.
+              Mỗi tài khoản Google sẽ sở hữu không gian quản lý lớp học, học sinh và phiếu chẩn đoán riêng biệt, được lưu trữ an toàn.
             </p>
           </div>
 

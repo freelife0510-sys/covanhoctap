@@ -143,10 +143,32 @@ export default function App() {
 
   // Cập nhật Giáo viên
   const handleUpdateTeacher = (newTeacher: Teacher) => {
+    const oldEmail = (teacher?.email || '').toLowerCase();
     setTeacher(newTeacher);
     saveTeacherProfile(newTeacher);
-    setAuthSession((prev) => ({ ...prev, teacherUser: newTeacher }));
-    saveAuthSession({ ...authSession, teacherUser: newTeacher });
+    setAuthSession((prev) => {
+      const updated = { ...prev, teacherUser: newTeacher };
+      saveAuthSession(updated);
+      return updated;
+    });
+    try {
+      localStorage.setItem('google_teacher_email', newTeacher.email);
+      localStorage.setItem('google_teacher_name', newTeacher.name);
+      const raw = localStorage.getItem('math_saved_teacher_accounts');
+      if (raw) {
+        let accounts = JSON.parse(raw);
+        if (Array.isArray(accounts)) {
+          accounts = accounts.map((a: any) =>
+            a.email.toLowerCase() === oldEmail
+              ? { ...a, email: newTeacher.email, name: newTeacher.name, school: newTeacher.school }
+              : a
+          );
+          localStorage.setItem('math_saved_teacher_accounts', JSON.stringify(accounts));
+        }
+      }
+    } catch (e) {
+      console.warn('Lỗi đồng bộ tài khoản giáo viên:', e);
+    }
   };
 
   // Cập nhật Lớp học (An toàn tuyệt đối khi teacher null)
@@ -157,6 +179,11 @@ export default function App() {
       const updatedTeacher = { ...teacher, classList: newClasses };
       setTeacher(updatedTeacher);
       saveTeacherProfile(updatedTeacher);
+      setAuthSession((prev) => {
+        const updated = { ...prev, teacherUser: updatedTeacher };
+        saveAuthSession(updated);
+        return updated;
+      });
     }
   };
 
@@ -424,6 +451,7 @@ export default function App() {
         role={currentRole}
         teacher={teacher}
         student={currentStudent}
+        onUpdateTeacher={handleUpdateTeacher}
       />
 
       {/* Sư phạm Footer (Hiển thị khi đang ở không gian học tập / quản trị) */}

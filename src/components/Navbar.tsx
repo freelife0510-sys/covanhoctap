@@ -309,7 +309,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </span>
                       <span className="text-[11px] text-slate-400 font-mono block truncate">
                         {currentRole === 'teacher'
-                          ? (currentTeacher?.email || 'giaovien@gmail.com')
+                          ? (currentTeacher?.email || 'Chưa liên kết email')
                           : (currentStudent?.id ? `Mã HS: ${currentStudent.id}` : 'Học sinh')}
                       </span>
                     </div>

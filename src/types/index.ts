@@ -93,6 +93,7 @@ export interface Teacher {
   email: string;
   name: string;
   school: string;
+  phone?: string;
   avatar?: string;
   classList: ClassRoom[];
   createdAt?: string;
