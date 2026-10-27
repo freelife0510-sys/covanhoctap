@@ -9,3 +9,9 @@ coverage/
 
 .vercel
 .env*
+
+playwright-report/
+test-results/
+.npm-cache/
+*.bundle
+.server-check/

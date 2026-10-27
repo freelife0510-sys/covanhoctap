@@ -1,81 +1,48 @@
-# MathDiagnostic AI - Hệ thống Đánh giá Thích ứng & Chẩn đoán Vùng trũng Kiến thức Toán THPT
+# Cố Vấn Học Tập — React/Vite + API + Supabase
 
-Hệ thống sư phạm chẩn đoán năng lực Toán THPT theo chuẩn Chương trình Giáo dục Phổ thông 2018 (GDPT 2018), áp dụng phương pháp gợi mở Socratic và tích hợp Google Gemini AI.
+Đang triển khai kế hoạch [S0–S8](docs/IMPLEMENTATION_PLAN.md). **Chưa nghiệm thu production**; xem [tiến độ](docs/PROGRESS.md), [nghiệm thu](docs/ACCEPTANCE.md) và [cấu hình cần thiết](docs/SETUP_REQUIRED.md). Không dùng dữ liệu demo hay chấm phỏng đoán để thay chức năng chưa cấu hình.
 
----
+## Chạy phát triển
 
-## 🚀 Hướng dẫn Cài đặt & Chạy trên máy cá nhân
+Node theo `.nvmrc` (đã kiểm tra Node 24.19.0), npm 11.9.0. Dùng checkout hiện có.
 
-### 1. Yêu cầu hệ thống
-- **Node.js**: Phiên bản 18, 20 hoặc 22 trở lên.
-- **npm** (đi kèm Node.js) hoặc **bun** / **pnpm** / **yarn**.
-
-### 2. Cài đặt các thư viện phụ thuộc
-Mở terminal tại thư mục chứa source code và chạy:
-```bash
-npm install
-```
-
-### 3. Khởi chạy máy chủ phát triển (Development Server)
-```bash
+```sh
+npm ci
+cp .env.example .env.local
+# Cấu hình dịch vụ riêng; không commit .env.local.
 npm run dev
 ```
-Trình duyệt sẽ tự động mở hoặc bạn có thể truy cập vào:
-`http://localhost:3000` hoặc `http://localhost:5173` theo hiển thị trên terminal.
 
-### 4. Cấu hình Google Gemini API Key (Tùy chọn)
-- Nếu có API Key từ Google AI Studio, bạn có thể nhập trực tiếp qua nút **"Cấu hình AI"** trên thanh Navbar của ứng dụng (lưu an toàn trên trình duyệt qua `localStorage`).
-- Hoặc tạo file `.env` từ `.env.example`:
-  ```bash
-  cp .env.example .env
-  ```
-  Sau đó điền key:
-  ```env
-  GEMINI_API_KEY="AIzaSy..."
-  ```
-- *Lưu ý*: Nếu chưa có API Key, hệ thống vẫn hoạt động đầy đủ 100% nhờ bộ động cơ sư phạm Fallback Heuristic tích hợp sẵn.
+Vite dev phục vụ cả `/api/*` qua middleware Node. Trên Vercel, handler tương ứng là `api/[...path].ts`. Thiếu Supabase hoặc Gemini sẽ trả lỗi cấu hình rõ ràng, không đăng nhập giả hoặc trả lời mẫu.
 
----
+## Kiểm thử
 
-## 📁 Cấu trúc thư mục
-
-```
-├── index.html                 # HTML Entry point
-├── package.json               # Danh sách thư viện và scripts
-├── tsconfig.json              # Cấu hình TypeScript
-├── vite.config.ts             # Cấu hình Vite & Tailwind CSS
-├── src/
-│   ├── main.tsx               # Khởi tạo React App
-│   ├── App.tsx                # Quản lý State toàn cục & Điều hướng vai trò
-│   ├── index.css              # Tailwind CSS & Font chữ tiếng Việt & Style in ấn A4
-│   ├── types/
-│   │   └── index.ts           # Toàn bộ TypeScript interfaces & Schema
-│   ├── data/
-│   │   └── mockData.ts        # Dữ liệu khởi tạo & 3 bài toán mẫu Demo
-│   ├── services/
-│   │   └── geminiService.ts   # Tích hợp Google Gemini 2.5 Flash & Fallback Engine
-│   ├── utils/
-│   │   ├── mathEvaluation.ts  # Bộ quy tắc thẩm định toán học sư phạm
-│   │   └── mathEvaluation.test.ts # Unit tests kiểm thử logic
-│   └── components/
-│       ├── Navbar.tsx         # Thanh điều hướng & Chuyển đổi Học sinh / Giáo viên
-│       ├── StudentWorkspace.tsx # Không gian làm bài của học sinh
-│       ├── TeacherDashboard.tsx # Bảng quản trị & Bản đồ nhiệt lỗi sai của giáo viên
-│       ├── A4DiagnosticSheet.tsx # Khung hiển thị Tờ phiếu A4 chuẩn sư phạm (In/PDF)
-│       └── MathRenderer.tsx   # Hiển thị công thức Toán học KaTeX/LaTeX
+```sh
+npm run typecheck
+npm run lint
+npm run test:unit
+npm run test:integration
+npm run test:curriculum
+npm run build
+npm run build:server
+npm run scan:build
+npm run test:e2e
 ```
 
----
+Postgres integration cần `TEST_DATABASE_URL` trỏ đến **database thử nghiệm kết thúc bằng `_test`**, sẽ xóa/tạo lại schema của database đó. Không dùng database có dữ liệu thật. Không có biến này, test DB được ghi SKIPPED, không phải PASS. Fixture mô phỏng metadata Auth/Storage để kiểm tra SQL/RLS; không thay cho kiểm thử dịch vụ Supabase thật.
 
-## ✨ Tính năng nổi bật
-1. **Phân quyền Học sinh (Student Workspace)**:
-   - Nhập đề bài & lời giải hoặc đính kèm ảnh chữ viết tay.
-   - Nhận phản hồi trên mô phỏng "Tờ giấy A4 chuẩn sư phạm" ($210 \times 297\text{ mm}$), có nút in Print A4.
-   - Không cho đáp số sẵn khi làm sai mà đưa ra câu hỏi gợi mở Socratic để học sinh tự sửa.
-   - Tự động sinh 2 bài tập tương đồng (khi cần củng cố) hoặc 2 bài tập nâng cao (khi làm đúng).
-   - Bảo mật tuyệt đối kết quả cá nhân, không hiển thị thống kê lớp ở màn hình học sinh.
-2. **Phân quyền Giáo viên (Teacher Management Dashboard)**:
-   - Theo dõi nhiều lớp học với các chỉ số KPI: Tỷ lệ làm đúng, Tỷ lệ tự sửa lỗi.
-   - **Bản đồ nhiệt vùng trũng kiến thức (Error Heatmap)**: Phân bổ trực quan các nhóm lỗi sai phổ biến.
-   - **Khuyến nghị Sư phạm tự động từ AI**: Đề xuất kế hoạch can thiệp cho tiết dạy sắp tới.
-   - Sổ theo dõi chi tiết bài nộp của học sinh kèm chức năng xem lại tờ phiếu A4.
+Playwright tự dùng Chromium hệ thống nếu có; nếu chưa có, chạy `npx playwright install chromium`. Test UI giả lập API được ghi rõ “UI contract mock”; không chứng minh live auth hay đồng bộ hai thiết bị.
+
+`npm run verify:ai` gọi thật provider (có thể tốn quota), discovery và kiểm tra chữ/JSON/PNG/PDF với dữ liệu tổng hợp. Kết quả lưu dưới `/tmp/covanhoctap-evidence`, không commit key hoặc telemetry chứa bài học sinh.
+
+## Lưu trữ và quyền
+
+Phiên BFF dùng cookie HttpOnly; Google qua Supabase PKCE; học sinh đăng nhập mã + mật khẩu ở server. Tài khoản giáo viên cần được cấp trong `teacher_access`. Không có seed tự động. Mật khẩu học sinh do Auth quản lý, chỉ hiển thị một lần khi cấp/reset. Mã học sinh duy nhất toàn hệ thống.
+
+Ngân hàng 84 câu nằm ở server. Câu chưa được giáo viên duyệt không được dùng để chấm. Không tuyên bố bao phủ toàn bộ SGK; báo cáo cấu trúc và trạng thái từng câu ở `docs/CURRICULUM_REVIEW.csv`.
+
+DOCX xuất là OOXML/OMML thật, không phải HTML đổi đuôi. Trình soạn Tiptap hỗ trợ văn bản, bảng, hình PNG/JPEG, công thức LaTeX, ngắt trang và revision. Các cấu trúc ngoài phạm vi báo lỗi. Phân trang được kiểm tra trong phạm vi báo cáo; chưa nghiệm thu Microsoft Word hoặc toàn bộ kế hoạch; xem báo cáo giới hạn.
+
+## GitHub → Vercel
+
+Dùng đúng project đang sở hữu `covanhoctap.vercel.app`. Đẩy nhánh tính năng để tạo Preview **nếu Git integration đã bật**; không mặc định mọi push đều deploy. Xem [triển khai](docs/DEPLOYMENT.md) và [rollback](docs/ROLLBACK.md). Không merge production trước khi cấu hình dịch vụ và gate live đạt.

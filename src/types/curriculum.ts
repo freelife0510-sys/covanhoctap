@@ -47,7 +47,7 @@ export interface ShortAnswerQuestion {
   correctValue: number | string; // Giá trị số chuẩn (hoặc chuỗi)
   acceptableAnswers: string[]; // Các dạng đáp án chấp nhận (vd: ["9", "9.0", "9 triệu"])
   unit?: string; // Đơn vị tính (vd: "triệu đồng", "nghìn đồng", "m", "phòng")
-  cognitiveLevel: 'Vận dụng' | 'Vận dụng cao';
+  cognitiveLevel: CognitiveLevel;
   isRealWorldModeling: boolean; // Đánh dấu bài toán thực tế mô hình hóa
   modelingSteps: {
     stepName: string;

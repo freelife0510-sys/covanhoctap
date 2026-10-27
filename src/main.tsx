@@ -34,10 +34,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               !
             </div>
             <h1 className="text-xl font-black text-slate-900">
-              Đang làm mới hệ thống
+              Ứng dụng gặp lỗi
             </h1>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Trình duyệt cần làm mới để đồng bộ bản cập nhật mới nhất của Cố Vấn Học Tập.
+              Hãy tải lại trang. Dữ liệu chưa lưu có thể cần nhập lại; dữ liệu đã lưu trên máy chủ được giữ nguyên.
             </p>
             <div className="pt-2 flex flex-col gap-2">
               <button
@@ -46,15 +46,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               >
                 Tải lại trang ngay
               </button>
-              <button
-                onClick={() => {
-                  localStorage.clear();
-                  window.location.reload();
-                }}
-                className="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs transition-colors cursor-pointer"
-              >
-                Xóa bộ nhớ đệm và tải lại
-              </button>
+
             </div>
           </div>
         </div>

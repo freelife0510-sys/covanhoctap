@@ -1,0 +1,3 @@
+import {defineConfig,devices} from '@playwright/test';
+import {existsSync} from 'node:fs';
+export default defineConfig({testDir:'tests/e2e',fullyParallel:false,workers:2,reporter:[['list'],['html',{open:'never'}]],outputDir:'test-results',use:{baseURL:'http://127.0.0.1:3100',trace:'retain-on-failure',launchOptions:existsSync('/usr/bin/chromium')?{executablePath:'/usr/bin/chromium',args:['--no-sandbox']}:{}},projects:[{name:'desktop',use:{...devices['Desktop Chrome']}},{name:'mobile',use:{...devices['Pixel 7'],viewport:{width:360,height:780}}}],webServer:{command:'npm run dev -- --port 3100 --strictPort',url:'http://127.0.0.1:3100',reuseExistingServer:false,env:{APP_ORIGIN:'http://127.0.0.1:3100'}}});

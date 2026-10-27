@@ -194,7 +194,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <div className="w-6 h-6 rounded-full bg-teal-500 text-white flex items-center justify-center text-[10px] font-bold ring-2 ring-white">M</div>
                   <div className="w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[10px] font-bold ring-2 ring-white">N</div>
                 </div>
-                <span>1,240 Bạn học đang online</span>
+                <span>Không gian học Toán THPT</span>
               </div>
 
               <button

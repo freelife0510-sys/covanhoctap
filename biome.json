@@ -1,0 +1,7 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
+  "files": {"includes": ["src/**", "server/**", "shared/**", "tests/**", "scripts/**", "!server/curriculum.ts", "!src/components/LandingPage.tsx", "!src/components/MathRenderer.tsx"]},
+  "linter": {"enabled": true, "rules": {"preset": "none", "correctness": {"noUnreachable": "error", "noUnsafeFinally": "error", "noConstAssign": "error", "useIsNan": "error"}, "suspicious": {"noDebugger": "error", "noDuplicateParameters": "error", "noDoubleEquals": "error", "noGlobalAssign": "error", "noShadowRestrictedNames": "error"}, "security": {"noDangerouslySetInnerHtml": "error", "noGlobalEval": "error"}}},
+  "formatter": {"enabled": false},
+  "assist": {"enabled": false}
+}

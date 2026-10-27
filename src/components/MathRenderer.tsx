@@ -157,9 +157,12 @@ function safeRenderKaTeX(tex: string, isBlock: boolean): string {
       displayMode: isBlock,
       throwOnError: false,
       output: 'htmlAndMathml',
+      trust: false,
+      maxExpand: 1000,
+      maxSize: 20,
     });
   } catch {
-    return tex;
+    return tex.replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c] || c));
   }
 }
 

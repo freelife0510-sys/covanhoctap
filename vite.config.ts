@@ -1,11 +1,22 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, loadEnv} from 'vite';
 
-export default defineConfig(() => {
+export default defineConfig(({mode}) => {
+  const local = loadEnv(mode, process.cwd(), '');
+  for (const [key, value] of Object.entries(local)) if (process.env[key] === undefined) process.env[key] = value;
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), {
+      name: 'development-api',
+      configureServer(server) {
+        server.middlewares.use('/api', async (req, res) => {
+          req.url = '/api' + (req.url || '/');
+          const { default: handler } = await import('./server/router.ts');
+          await handler(req, res);
+        });
+      },
+    }],
     resolve: {
       alias: {
         '@': path.resolve(import.meta.dirname, '.'),
