@@ -19,6 +19,7 @@
     "test:curriculum": "node --import tsx scripts/verify-curriculum.ts",
     "verify:ai": "node --import tsx scripts/verify-ai.ts",
     "check:env": "node --import tsx scripts/check-env.ts",
+    "setup:production": "node --import tsx scripts/setup-production.ts",
     "build:server": "esbuild api/[...path].ts --platform=node --bundle --packages=external --format=esm --outdir=.server-check",
     "scan:build": "node --import tsx scripts/scan-build.ts",
     "prebuild": "node --import tsx scripts/production-gate.ts"
