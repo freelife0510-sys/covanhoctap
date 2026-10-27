@@ -2,10 +2,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { boundary, body, cookie, cookies, HttpError, required, send } from './http.ts';
+import { appOrigin, boundary, body, cookie, cookies, HttpError, required, requestOrigin, send } from './http.ts';
 import { authenticate, checked, clearSession, setSession, supabase, teacher } from './auth.ts';
 import { chatRequestSchema, classSchema, documentSchema, loginSchema, studentCreateSchema, uuid } from '../shared/contracts.ts';
-import { generate, isAIConfigured } from './ai.ts';
+import { checkAIConnection, generate } from './ai.ts';
 import { googleOAuthOptions } from './oauth.ts';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
@@ -18,12 +18,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const client = createClient(required('SUPABASE_URL'), required('SUPABASE_PUBLISHABLE_KEY'), { auth: { flowType: 'pkce', persistSession: true, autoRefreshToken: false, storage: {
         getItem: () => null, setItem: (key, value) => { if (key.endsWith('code-verifier')) verifier = value; }, removeItem: () => {},
       } } });
-      const { data, error } = await client.auth.signInWithOAuth({ provider: 'google', options: googleOAuthOptions(required('APP_ORIGIN')) });
-      if (error || !data.url || !verifier) throw new HttpError(503, 'OAUTH_NOT_CONFIGURED', 'Chưa cấu hình Google OAuth.');
+      const { data, error } = await client.auth.signInWithOAuth({ provider: 'google', options: googleOAuthOptions(requestOrigin(req) || appOrigin(req)) });
+      if (error || !data.url || !verifier) { redirectAuthError(req, res, 'OAUTH_NOT_CONFIGURED'); return; }
       res.setHeader('Set-Cookie', cookie('cv_pkce', encodeURIComponent(verifier), 600));
       res.statusCode = 302; res.setHeader('Location', data.url); res.end(); return;
     }
-    if (path === '/api/auth/google/callback' && method === 'GET') {
+    if (path === '/api/auth/google/callback' && method === 'GET') { try {
+      if (url.searchParams.get('error')) throw new HttpError(401, 'OAUTH_CANCELLED', 'Đăng nhập Google bị hủy.');
       const code = url.searchParams.get('code'); const saved = cookies(req).cv_pkce;
       if (!code || !saved) throw new HttpError(400, 'OAUTH_STATE', 'Phiên đăng nhập Google hết hạn.');
       const client = createClient(required('SUPABASE_URL'), required('SUPABASE_PUBLISHABLE_KEY'), { auth: { flowType: 'pkce', persistSession: true, autoRefreshToken: false, storage: {
@@ -39,10 +40,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       setSession(res, result.data.session);
       const set = res.getHeader('Set-Cookie') as string[];
       res.setHeader('Set-Cookie', [...set, cookie('cv_pkce', '', 0)]);
-      res.statusCode = 302; res.setHeader('Location', `${required('APP_ORIGIN')}/`); res.end(); return;
+      res.statusCode = 302; res.setHeader('Location', `${requestOrigin(req) || appOrigin(req)}/`); res.end(); return;
+      } catch (error) { redirectAuthError(req, res, error instanceof HttpError ? error.code : 'OAUTH_FAILED'); return; }
     }
     if (path === '/api/auth/student-login' && method === 'POST') {
       const input = loginSchema.parse(await body(req)); const admin = supabase(undefined, true);
+      // Call Gemini with the server-side key immediately, in parallel with sign-in,
+      // so the learner workspace opens with the AI already verified and warm.
+      const aiCheck = checkAIConnection().catch(() => null);
       // Persistent atomic rate limiting. Hash codes; no credential/body logging.
       const rateKey = createHash('sha256').update(input.identifier.toUpperCase()).digest('hex');
       const allowed = checked(await admin.rpc('login_rate_limit', { p_key: rateKey }));
@@ -51,7 +56,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       // A missing identity still goes through Auth to reduce account enumeration timing differences.
       const result = await supabase().auth.signInWithPassword({ email: account?.auth_email || 'missing@students.invalid', password: input.password });
       if (result.error || !result.data.session || !account) throw new HttpError(401, 'LOGIN_FAILED', 'Mã học sinh hoặc mật khẩu không đúng.');
-      setSession(res, result.data.session); send(res, 200, { success: true }); return;
+      setSession(res, result.data.session); send(res, 200, { success: true, ai: await aiCheck }); return;
     }
     const identity = await authenticate(req, res); const { db, id, role } = identity;
     if (path === '/api/auth/logout' && method === 'POST') {
@@ -67,7 +72,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       checked(await admin.from('profiles').update({ forced_password_change: false, revoked_before: Math.floor(Date.now()/1000) }).eq('user_id', id));
       await admin.auth.admin.signOut(cookies(req).cv_access || '', 'global');
       clearSession(res);
-      send(res, 200, { success: true }); return;
+      // Students re-enter automatically with the new password (no second login form).
+      // Wait past the revocation second so the fresh token's iat is accepted.
+      const email = changed.data.user?.email;
+      if (role === 'student' && email) {
+        await new Promise(resolve => setTimeout(resolve, 1100));
+        const relogin = await supabase().auth.signInWithPassword({ email, password });
+        if (relogin.data.session) { setSession(res, relogin.data.session); send(res, 200, { success: true, relogged: true, ai: await checkAIConnection().catch(() => null) }); return; }
+      }
+      send(res, 200, { success: true, relogged: false }); return;
     }
     if (path === '/api/session' && method === 'GET') {
       const profile = checked(await db.from('profiles').select('user_id,name,school,role,forced_password_change').eq('user_id', id).single());
@@ -76,9 +89,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (identity.forcedPasswordChange) throw new HttpError(403, 'PASSWORD_CHANGE_REQUIRED', 'Vui lòng đổi mật khẩu được cấp trước khi tiếp tục.');
     if (path === '/api/ai/status' && method === 'GET') {
-      // This zero-cost configuration check runs when a learner enters the
-      // workspace. The Gemini key stays server-side and is used only by chat.
-      send(res, 200, { available: isAIConfigured() }); return;
+      // Real connection check: calls Gemini with the server-side key (model
+      // metadata only, no tokens). Cached; `?force=1` re-tests immediately.
+      send(res, 200, await checkAIConnection(url.searchParams.get('force') === '1')); return;
     }
     if (path === '/api/workspace' && method === 'GET') {
       const classes = checked(await db.from('classes').select('id,teacher_id,data').is('archived_at', null));
@@ -290,4 +303,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     throw new HttpError(404, 'NOT_FOUND', 'Không có chức năng API này.');
   });
+}
+
+/** Send OAuth failures back to the app with a readable code instead of a raw JSON page. */
+function redirectAuthError(req: IncomingMessage, res: ServerResponse, code: string) {
+  res.setHeader('Set-Cookie', [cookie('cv_pkce', '', 0), cookie('cv_access', '', 0), cookie('cv_refresh', '', 0)]);
+  res.statusCode = 302; res.setHeader('Location', `${requestOrigin(req) || appOrigin(req)}/?auth_error=${encodeURIComponent(code)}`); res.end();
 }

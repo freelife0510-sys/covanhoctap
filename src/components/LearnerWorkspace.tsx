@@ -1,19 +1,21 @@
 import React, {useEffect,useRef,useState} from 'react';
 import {api, post, upload} from '../services/apiClient.ts';
-import type {Session,Workspace} from '../features.ts';
+import type {AIConnection,Session,Workspace} from '../features.ts';
 import MathRenderer from './MathRenderer.tsx';
 const DocumentEditor=React.lazy(()=>import('./DocumentEditor.tsx')); 
 import StudentProgress from './StudentProgress.tsx';
 import Practice from './Practice.tsx';
 type Message={id:string;role:string;content:string;data?:{detailedSolution?:string;verdict?:string;modelUsed?:string;reviewState?:string}};
-export default function LearnerWorkspace({session}:{session:Session}) {
+export default function LearnerWorkspace({session,initialAi=null}:{session:Session;initialAi?:AIConnection|null}) {
   const [tab,setTab]=useState('advisor');const [conversation,setConversation]=useState('');const [messages,setMessages]=useState<Message[]>([]);
   const [text,setText]=useState('');const [intent,setIntent]=useState('ask_guidance');const [file,setFile]=useState<File|null>(null);
   const [status,setStatus]=useState('');const [error,setError]=useState('');const [workspace,setWorkspace]=useState<Workspace|null>(null);
-  const [aiAvailable,setAiAvailable]=useState<boolean|null>(null);
+  // AI status comes pre-checked from login; otherwise (page reload) check right away.
+  const [ai,setAi]=useState<AIConnection|null>(initialAi);const [aiChecking,setAiChecking]=useState(false);
+  const checkAi=(force=false)=>{setAiChecking(true);return api<AIConnection>(`/ai/status${force?'?force=1':''}`).then(setAi).catch(e=>setAi({available:false,ready:false,model:null,code:'CHECK_FAILED',message:(e as Error).message,checkedAt:new Date().toISOString()})).finally(()=>setAiChecking(false));};
   const [conversations,setConversations]=useState<{id:string;created_at:string}[]>([]);const [busy,setBusy]=useState(false);
   const inFlight=useRef(false);const requestRef=useRef<{key:string;requestId:string;attachmentIds:string[]}|null>(null);
-  useEffect(()=>{let alive=true;api<{available:boolean}>('/ai/status').then(result=>{if(alive)setAiAvailable(result.available);}).catch(()=>{if(alive)setAiAvailable(false);});api<{id:string;created_at:string}[]>('/conversations').then(rows=>{if(alive){setConversations(rows);setConversation(rows[0]?.id||crypto.randomUUID());}}).catch(e=>{if(alive)setError(e.message);});const load=()=>api<Workspace>('/workspace').then(w=>{if(alive)setWorkspace(w);}).catch(e=>{if(alive)setError(e.message);});void load();const timer=setInterval(load,8000);return()=>{alive=false;clearInterval(timer);};},[]);
+  useEffect(()=>{let alive=true;if(!initialAi)void checkAi();api<{id:string;created_at:string}[]>('/conversations').then(rows=>{if(alive){setConversations(rows);setConversation(rows[0]?.id||crypto.randomUUID());}}).catch(e=>{if(alive)setError(e.message);});const load=()=>api<Workspace>('/workspace').then(w=>{if(alive)setWorkspace(w);}).catch(e=>{if(alive)setError(e.message);});void load();const timer=setInterval(load,8000);return()=>{alive=false;clearInterval(timer);};},[]);
   useEffect(()=>{if(!conversation)return;let alive=true;api<Message[]>(`/messages?conversationId=${conversation}`).then(rows=>{if(alive)setMessages(rows);}).catch(e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[conversation]);
   const send=async(e:React.FormEvent)=>{
     e.preventDefault();if(inFlight.current||(!text.trim()&&!file)||!conversation)return;inFlight.current=true;setBusy(true);setError('');
@@ -30,7 +32,7 @@ export default function LearnerWorkspace({session}:{session:Session}) {
   const latest=messages.filter(m=>m.role==='assistant').at(-1);
   const documentText=latest?.data?.detailedSolution||latest?.content||'';
   return <div className="space-y-4"><h1 className="text-2xl font-bold">Xin chào, {session.profile.name}</h1><p>Mã học sinh: {session.student?.student_code}</p>
-    {aiAvailable===false&&<div className="error" role="status"><p>Cố vấn AI chưa được kết nối. Quản trị viên cần cấu hình Gemini trên máy chủ Vercel; API key được giữ kín ở máy chủ và không nhập vào trình duyệt.</p></div>}
+    <div className={ai?.ready?'panel border-emerald-300 bg-emerald-50':ai===null||aiChecking?'panel':'error'} role="status" aria-live="polite"><p>{aiChecking||ai===null?'⏳ Đang kết nối Cố vấn AI…':ai.ready?`✅ ${ai.message}${ai.model?` (model: ${ai.model})`:''}`:`⚠️ Cố vấn AI chưa sẵn sàng: ${ai.message}${ai.code==='SETUP_REQUIRED'?' Quản trị viên cần cấu hình Gemini trên máy chủ Vercel; API key được giữ kín ở máy chủ.':''}`}</p>{!aiChecking&&ai&&!ai.ready&&<button type="button" onClick={()=>void checkAi(true)}>Kết nối lại AI</button>}</div>
     <nav className="flex flex-wrap gap-2">{[['advisor','Cố vấn AI'],['practice','Tự học'],['assignments','Nhiệm vụ'],['documents','Soạn tài liệu A4'],['progress','Hồ sơ tiến bộ']].map(([key,label])=><button className={tab===key?'button':'secondary'} key={key} onClick={()=>setTab(key)}>{label}</button>)}</nav>
     {error&&<div className="error" role="alert"><p>{error}</p><button disabled={busy} onClick={()=>{requestRef.current=null;setError('');setStatus('Sẵn sàng gửi yêu cầu mới.');}}>Chuẩn bị gửi lại yêu cầu</button></div>}
     {tab==='advisor'&&<div className="grid lg:grid-cols-2 gap-5"><section className="panel space-y-4"><div className="flex gap-2 flex-wrap"><label className="flex-1">Hội thoại<select value={conversation} disabled={busy} onChange={e=>setConversation(e.target.value)}>{!conversations.some(c=>c.id===conversation)&&<option value={conversation}>Hội thoại mới</option>}{conversations.map(c=><option key={c.id} value={c.id}>{new Date(c.created_at).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})}</option>)}</select></label><button disabled={busy} onClick={()=>{setConversation(crypto.randomUUID());setMessages([]);}}>Hội thoại mới</button></div>

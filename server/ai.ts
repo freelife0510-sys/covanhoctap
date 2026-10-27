@@ -54,3 +54,37 @@ export async function generate(messages: { role: string; content: string }[], in
   }
   throw new HttpError(503, 'AI_MODEL_UNAVAILABLE', 'Không có model đã cấu hình.');
 }
+
+export type AIConnection = { available: boolean; ready: boolean; model: string | null; code: string | null; message: string; checkedAt: string };
+let connectionCache: { value: AIConnection; expires: number } | null = null;
+let connectionInFlight: Promise<AIConnection> | null = null;
+/**
+ * Calls Gemini with the server-side API key right away (model metadata lookup,
+ * no generated tokens) so the learner workspace knows the AI is reachable before
+ * the first question. Successful checks are cached for 5 minutes, failures 20 s.
+ */
+export function checkAIConnection(force = false): Promise<AIConnection> {
+  if (!force && connectionCache && connectionCache.expires > Date.now()) return Promise.resolve(connectionCache.value);
+  if (connectionInFlight) return connectionInFlight;
+  const done = (value: AIConnection) => { connectionCache = { value, expires: Date.now() + (value.ready ? 300_000 : 20_000) }; return value; };
+  const stamp = () => new Date().toISOString();
+  if (!isAIConfigured()) {
+    return Promise.resolve(done({ available: false, ready: false, model: null, code: 'SETUP_REQUIRED', message: 'Máy chủ chưa cấu hình đủ GEMINI_API_KEY, GEMINI_PRIMARY_MODEL và hạn mức AI.', checkedAt: stamp() }));
+  }
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+  const models = [process.env.GEMINI_PRIMARY_MODEL as string, ...(process.env.GEMINI_FALLBACK_MODELS || '').split(',').map(m => m.trim()).filter(Boolean)];
+  connectionInFlight = (async () => {
+    let last: HttpError | null = null;
+    for (const model of models) {
+      try {
+        await ai.models.get({ model, config: { httpOptions: { timeout: 8000 } } });
+        return done({ available: true, ready: true, model, code: null, message: 'Cố vấn AI đã kết nối và sẵn sàng.', checkedAt: stamp() });
+      } catch (error) {
+        last = classifyProviderError(error);
+        if (last.code !== 'AI_MODEL_UNAVAILABLE') break;
+      }
+    }
+    return done({ available: true, ready: false, model: null, code: last?.code || 'AI_UNAVAILABLE', message: last?.message || 'Dịch vụ AI tạm thời không phản hồi.', checkedAt: stamp() });
+  })().finally(() => { connectionInFlight = null; });
+  return connectionInFlight;
+}

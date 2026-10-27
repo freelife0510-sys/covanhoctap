@@ -14,12 +14,30 @@ export function cookies(req: IncomingMessage): Record<string, string> {
     const i = p.indexOf('='); return [p.slice(0, i).trim(), p.slice(i + 1)];
   }));
 }
+const normalizeOrigin = (value?: string | null) => (value || '').trim().replace(/\/+$/, '').toLowerCase();
+const firstHeader = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value || '').split(',')[0].trim();
+/** Origin the browser actually used to reach this server (Vercel/proxy aware). */
+export function requestOrigin(req: IncomingMessage): string {
+  const host = firstHeader(req.headers['x-forwarded-host']) || firstHeader(req.headers.host);
+  const proto = firstHeader(req.headers['x-forwarded-proto']) || ((req.socket as { encrypted?: boolean } | undefined)?.encrypted ? 'https' : 'http');
+  return normalizeOrigin(host ? `${proto}://${host}` : process.env.APP_ORIGIN);
+}
+/** Configured public origin; falls back to the request origin when APP_ORIGIN is missing. */
+export function appOrigin(req?: IncomingMessage): string {
+  return normalizeOrigin(process.env.APP_ORIGIN) || (req ? requestOrigin(req) : '');
+}
 export function cookie(name: string, value: string, maxAge: number): string {
-  return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${required('APP_ORIGIN').startsWith('https:') ? '; Secure' : ''}`;
+  const secure = normalizeOrigin(process.env.APP_ORIGIN).startsWith('https:') || Boolean(process.env.VERCEL);
+  return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
 }
 export function mutate(req: IncomingMessage) {
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method || 'GET') && req.headers.origin !== required('APP_ORIGIN')) {
-    throw new HttpError(403, 'ORIGIN_REJECTED', 'Nguồn yêu cầu không được phép.');
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method || 'GET')) return;
+  // CSRF guard: accept the configured origin (ignoring a trailing slash) or the
+  // exact host the request was sent to (e.g. 127.0.0.1, LAN IP, Vercel preview).
+  const origin = normalizeOrigin(req.headers.origin);
+  const allowed = new Set([normalizeOrigin(process.env.APP_ORIGIN), requestOrigin(req)].filter(Boolean));
+  if (!origin || !allowed.has(origin)) {
+    throw new HttpError(403, 'ORIGIN_REJECTED', 'Nguồn yêu cầu không được phép. Hãy mở ứng dụng đúng địa chỉ chính thức rồi thử lại.');
   }
 }
 export async function body(req: IncomingMessage): Promise<unknown> {
