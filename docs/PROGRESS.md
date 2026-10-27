@@ -45,3 +45,7 @@ Chủ sở hữu chọn sửa bản GitHub/cloud rồi tự đồng bộ về m�
 ## Điểm dừng thực tế
 
 Bản này là nhánh triển khai để review, **không phải sản phẩm đã hoàn thiện/đủ production**. Chưa có bí mật/quyền dịch vụ cần thiết để chạy luồng thật. Các mục NOT IMPLEMENTED được giữ rõ, không gộp thành “chỉ thiếu key”. Sau khi cấu hình dịch vụ, ưu tiên kiểm thử Auth/DB/Storage thực và sửa vấn đề phát hiện trước khi mở rộng các luồng còn thiếu. Không dùng dữ liệu học sinh thật cho đến khi quyền và lưu trữ đạt gate.
+
+## Bàn giao GitHub
+
+Source `ef653944934855439a37eaa1873c4d36bcde4ae2` đã push thành công lên `origin/feat/production-readiness`. GitHub Actions run 40521018004 có Status Success cho commit đó. Main và production chưa được thay đổi. Xem bằng chứng ở ACCEPTANCE.md. Vercel Preview/production vẫn chưa nghiệm thu; không lấy CI xanh thay cho các gate live.

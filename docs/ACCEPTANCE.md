@@ -46,3 +46,14 @@ Môi trường: cloud Linux, Node 24.19.0/npm 11.9.0, PostgreSQL 17 Docker cục
 | T40 | BLOCKED | Chưa deploy production/rollback thật |
 
 Không thay đổi tiêu chuẩn để gọi PARTIAL/BLOCKED là PASS. CI không tự promote. Log chỉ requestId/code/status, không bài học sinh/key. HTML report Playwright và trace cục bộ nằm trong playwright-report/test-results, bị Git ignore. Chạy lại toàn bộ check sau cấu hình dịch vụ; không dùng kết quả mock để nghiệm thu live.
+
+## Lần kiểm tra đã ghi nhận
+
+- Source commit: `ef653944934855439a37eaa1873c4d36bcde4ae2`, đã xác minh ref nhánh trên GitHub.
+- `npm ci`, strict typecheck, lint, build Vite, server esbuild, known-pattern/canary scan: PASS cục bộ.
+- Unit: 9 PASS. Integration: 2 PASS (HTTP + Postgres/RLS/transactions; fixture Auth/Storage).
+- Playwright: 14 PASS, 4 SKIPPED (các phép thử in/preview mobile được thực hiện trên desktop). Không có FAIL còn lại trong các suite đã chạy.
+- GitHub Actions run [40521018004](https://github.com/freelife0510-sys/covanhoctap/actions/runs/40521018004), đúng source commit trên: trang summary hiển thị **Status Success**. Đọc qua GitHub HTML công khai; API domain vẫn bị network policy chặn.
+- Vercel domain probe bị egress proxy chặn CONNECT 403; không suy ra ứng dụng production lỗi. Không có bằng chứng Preview/production mới đã triển khai. GitHub deployment page trả 404, không chứng minh có hay không Git integration.
+- `verify:ai`: BLOCKED/SETUP_REQUIRED. Không có kết quả live Gemini hoặc Supabase.
+- Cổng production thiếu cấu hình đã được chạy và từ chối đúng kỳ vọng.
