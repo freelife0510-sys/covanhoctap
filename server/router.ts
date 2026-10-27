@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { boundary, body, cookie, cookies, HttpError, required, send } from './http.ts';
 import { authenticate, checked, clearSession, setSession, supabase, teacher } from './auth.ts';
 import { chatRequestSchema, classSchema, documentSchema, loginSchema, studentCreateSchema, uuid } from '../shared/contracts.ts';
-import { generate } from './ai.ts';
+import { generate, isAIConfigured } from './ai.ts';
+import { googleOAuthOptions } from './oauth.ts';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await boundary(req, res, async () => {
@@ -17,7 +18,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const client = createClient(required('SUPABASE_URL'), required('SUPABASE_PUBLISHABLE_KEY'), { auth: { flowType: 'pkce', persistSession: true, autoRefreshToken: false, storage: {
         getItem: () => null, setItem: (key, value) => { if (key.endsWith('code-verifier')) verifier = value; }, removeItem: () => {},
       } } });
-      const { data, error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${required('APP_ORIGIN')}/api/auth/google/callback`, skipBrowserRedirect: true } });
+      const { data, error } = await client.auth.signInWithOAuth({ provider: 'google', options: googleOAuthOptions(required('APP_ORIGIN')) });
       if (error || !data.url || !verifier) throw new HttpError(503, 'OAUTH_NOT_CONFIGURED', 'Chưa cấu hình Google OAuth.');
       res.setHeader('Set-Cookie', cookie('cv_pkce', encodeURIComponent(verifier), 600));
       res.statusCode = 302; res.setHeader('Location', data.url); res.end(); return;
@@ -74,6 +75,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       send(res, 200, { profile, student }); return;
     }
     if (identity.forcedPasswordChange) throw new HttpError(403, 'PASSWORD_CHANGE_REQUIRED', 'Vui lòng đổi mật khẩu được cấp trước khi tiếp tục.');
+    if (path === '/api/ai/status' && method === 'GET') {
+      // This zero-cost configuration check runs when a learner enters the
+      // workspace. The Gemini key stays server-side and is used only by chat.
+      send(res, 200, { available: isAIConfigured() }); return;
+    }
     if (path === '/api/workspace' && method === 'GET') {
       const classes = checked(await db.from('classes').select('id,teacher_id,data').is('archived_at', null));
       const students = checked(await db.from('student_accounts').select('user_id,student_code,teacher_id,class_id,data'));

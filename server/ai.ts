@@ -3,6 +3,10 @@ import { aiResultSchema, type intentSchema } from '../shared/contracts.ts';
 import { HttpError, required } from './http.ts';
 import type { z } from 'zod';
 export const PROMPT_VERSION = '2026-10-27.1';
+export function isAIConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
+  return ['GEMINI_API_KEY', 'GEMINI_PRIMARY_MODEL', 'AI_DAILY_REQUEST_LIMIT_PER_USER', 'AI_GLOBAL_DAILY_TOKEN_LIMIT']
+    .every(name => Boolean(env[name]?.trim()));
+}
 export function classifyProviderError(error: unknown): HttpError {
   const status = Number((error as { status?: number })?.status);
   if (status === 401 || status === 403) return new HttpError(503, 'AI_CREDENTIAL_ERROR', 'Cấu hình quyền truy cập AI không hợp lệ.');

@@ -33,7 +33,7 @@ export default function App() {
     <header className="no-print bg-white border-b px-4 py-4 flex flex-wrap items-center justify-between gap-3">
       <button className="font-black text-xl text-emerald-800" onClick={() => setHome(true)}>Cố Vấn Học Tập</button>
       <nav className="flex flex-wrap gap-3 items-center" aria-label="Điều hướng chính">
-        {session ? <><span>{session.profile.name}</span><button onClick={() => setHome(false)}>Không gian học tập</button><button onClick={()=>setProfileOpen(true)}>Hồ sơ</button><button disabled={busy} onClick={() => void run(async () => { await post('/auth/logout', {}); setSession(null); setHome(true); })}>Đăng xuất</button></> : <><button onClick={() => setLogin(true)}>Đăng nhập học sinh</button><a className="button" href="/api/auth/google/start">Giáo viên · Google</a></>}
+        {session ? <><span>{session.profile.name}</span><button onClick={() => setHome(false)}>Không gian học tập</button><button onClick={()=>setProfileOpen(true)}>Hồ sơ</button><button disabled={busy} onClick={() => void run(async () => { await post('/auth/logout', {}); setSession(null); setHome(true); })}>Đăng xuất</button></> : <><button onClick={() => setLogin(true)}>Đăng nhập học sinh</button><a className="button" href="/api/auth/google/start">Giáo viên · Chọn tài khoản Google</a></>}
       </nav>
     </header>
     <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">

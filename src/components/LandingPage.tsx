@@ -658,7 +658,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </li>
               <li>
                 <button onClick={onOpenTeacherLogin} className="hover:text-emerald-700 cursor-pointer">
-                  Đăng nhập Giáo viên Google
+                  Giáo viên · Chọn tài khoản Google
                 </button>
               </li>
             </ul>

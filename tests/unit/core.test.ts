@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {numericValue,gradeShortAnswer,stableShuffle} from '../../server/grading.ts';
-import {validateAI,classifyProviderError} from '../../server/ai.ts';
+import {validateAI,classifyProviderError,isAIConfigured} from '../../server/ai.ts';
+import {googleOAuthOptions} from '../../server/oauth.ts';
 import {chatRequestSchema,studentCreateSchema} from '../../shared/contracts.ts';
 import {inspectFile} from '../../server/files.ts';
 import {PDFDocument} from 'pdf-lib';
@@ -22,6 +23,8 @@ test('AI rejects string booleans, unsupported fields, unsupported verdicts and m
  assert.equal(validateAI(reply,'submit_solution').verdict,'inconclusive');
 });
 test('provider error types do not convert credentials/quota to model fallback',()=>{assert.equal(classifyProviderError({status:403}).code,'AI_CREDENTIAL_ERROR');assert.equal(classifyProviderError({status:429}).code,'AI_QUOTA');assert.equal(classifyProviderError({status:404}).code,'AI_MODEL_UNAVAILABLE');assert.equal(classifyProviderError({name:'AbortError'}).status,504);});
+test('teacher Google login explicitly asks to choose an account',()=>{assert.deepEqual(googleOAuthOptions('https://app.example'),{redirectTo:'https://app.example/api/auth/google/callback',queryParams:{prompt:'select_account'},skipBrowserRedirect:true});});
+test('AI readiness requires server key, model and both configured usage budgets',()=>{assert.equal(isAIConfigured({}),false);assert.equal(isAIConfigured({GEMINI_API_KEY:'server-key',GEMINI_PRIMARY_MODEL:'verified-model'}),false);assert.equal(isAIConfigured({GEMINI_API_KEY:'server-key',GEMINI_PRIMARY_MODEL:'verified-model',AI_DAILY_REQUEST_LIMIT_PER_USER:'4',AI_GLOBAL_DAILY_TOKEN_LIMIT:'1000'}),true);});
 test('student inputs cannot assign role, score or owner',()=>{assert.equal(studentCreateSchema.safeParse({name:'An',classId:crypto.randomUUID(),studentCode:'HS-01',role:'teacher'}).success,false);assert.equal(chatRequestSchema.safeParse({requestId:crypto.randomUUID(),conversationId:crypto.randomUUID(),message:'test',attachmentIds:[],intent:'ask_guidance',score:10}).success,false);});
 test('real PDF parser rejects corruption and page count overflow',async()=>{await assert.rejects(()=>inspectFile(Buffer.from('not-pdf'),'application/pdf',7));const pdf=await PDFDocument.create();for(let i=0;i<21;i++)pdf.addPage();const bytes=await pdf.save();await assert.rejects(()=>inspectFile(bytes,'application/pdf',bytes.length),/20 trang/);});
 test('document schema rejects script nodes and external image URLs',async()=>{
