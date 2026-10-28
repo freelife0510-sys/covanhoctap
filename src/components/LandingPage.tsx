@@ -55,7 +55,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* Top Feature Pill */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs sm:text-sm font-bold shadow-2xs mb-6 hover:bg-emerald-100/70 transition-colors">
           <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500" />
-          <span>Nền Tảng Cố Vấn Học Tập Cá Nhân Hóa Dành Riêng Cho Học Sinh</span>
+          <span>Nền Tảng Cố Vấn 4 lựa chọn Cá Nhân Hóa Dành Riêng Cho Học Sinh</span>
         </div>
 
         {/* Main Headline */}
@@ -98,8 +98,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <Users className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xl sm:text-2xl font-black text-slate-900">50,000+</div>
-              <div className="text-xs text-slate-500 font-medium">Học sinh đã được tư vấn</div>
+              <div className="text-xl sm:text-2xl font-black text-slate-900">10 – 11 – 12</div>
+              <div className="text-xs text-slate-500 font-medium">Chương trình Toán THPT GDPT 2018</div>
             </div>
           </div>
 
@@ -108,8 +108,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <TrendingUp className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xl sm:text-2xl font-black text-slate-900">98%</div>
-              <div className="text-xs text-slate-500 font-medium">Cải thiện kết quả học tập</div>
+              <div className="text-xl sm:text-2xl font-black text-slate-900">24 Chương</div>
+              <div className="text-xs text-slate-500 font-medium">Ngân hàng lý thuyết & bài tập chuẩn</div>
             </div>
           </div>
 
@@ -118,8 +118,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <UserCheck className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xl sm:text-2xl font-black text-slate-900">1,200+</div>
-              <div className="text-xs text-slate-500 font-medium">Thầy cô & chuyên gia cố vấn</div>
+              <div className="text-xl sm:text-2xl font-black text-slate-900">3 Dạng thức</div>
+              <div className="text-xs text-slate-500 font-medium">Trắc nghiệm • Đúng/Sai • Trả lời ngắn</div>
             </div>
           </div>
         </div>
@@ -240,7 +240,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600">
                   <div className="p-2 rounded-xl bg-white border border-slate-200 flex items-center gap-2">
                     <Users className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                    <span className="truncate">Thêm lớp & học sinh mẫu</span>
+                    <span className="truncate">Quản lý lớp & cấp mã học sinh</span>
                   </div>
                   <div className="p-2 rounded-xl bg-white border border-slate-200 flex items-center gap-2">
                     <ShieldCheck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
@@ -399,7 +399,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       <span className="text-[10px] text-slate-500">Toán Giải tích 12 • 25 phút</span>
                     </div>
                   </div>
-                  <span className="text-[11px] font-mono font-bold text-emerald-700">+50xp</span>
+                  <span className="text-[11px] font-mono font-bold text-emerald-700">Đã thẩm định</span>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
@@ -440,20 +440,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
               <div className="grid grid-cols-4 gap-2 text-center">
                 <div className="p-2 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <div className="text-base font-black text-blue-600">85%</div>
+                  <div className="text-base font-black text-blue-600">MC</div>
                   <div className="text-[10px] font-semibold text-slate-600 mt-0.5">Học Tập</div>
                 </div>
                 <div className="p-2 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <div className="text-base font-black text-emerald-600">90%</div>
-                  <div className="text-[10px] font-semibold text-slate-600 mt-0.5">Thể Thao</div>
+                  <div className="text-base font-black text-emerald-600">Đ/S</div>
+                  <div className="text-[10px] font-semibold text-slate-600 mt-0.5">4 mệnh đề</div>
                 </div>
                 <div className="p-2 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <div className="text-base font-black text-amber-600">75%</div>
-                  <div className="text-[10px] font-semibold text-slate-600 mt-0.5">Sở Thích</div>
+                  <div className="text-base font-black text-amber-600">TLN</div>
+                  <div className="text-[10px] font-semibold text-slate-600 mt-0.5">Điền đáp số</div>
                 </div>
                 <div className="p-2 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <div className="text-base font-black text-purple-600">80%</div>
-                  <div className="text-[10px] font-semibold text-slate-600 mt-0.5">Nghỉ Ngơi</div>
+                  <div className="text-base font-black text-purple-600">A4</div>
+                  <div className="text-[10px] font-semibold text-slate-600 mt-0.5">Xuất DOCX</div>
                 </div>
               </div>
             </div>

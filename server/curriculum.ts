@@ -1,14 +1,4 @@
-import { GradeCurriculum } from '../src/types/curriculum.ts';
-
-/**
- * MATHDIAGNOSTIC AI - GDPT 2018 CURRICULUM DATA
- * Bộ dữ liệu chương trình chuẩn DUY NHẤT: SÁCH GIÁO KHOA KẾT NỐI TRI THỨC VỚI CUỘC SỐNG
- * Nội dung hiện có; chưa xác nhận bao phủ toàn bộ chương trình
- * Mỗi bài học đều có đầy đủ 3 định dạng câu hỏi chuẩn Bộ GD&ĐT:
- * 1. Trắc nghiệm 4 lựa chọn (Nhận biết, Thông hiểu)
- * 2. Câu hỏi Đúng / Sai 4 ý a, b, c, d (Nhận biết, Thông hiểu, Vận dụng)
- * 3. Trả lời ngắn (Vận dụng, Mô hình hóa thực tiễn có các bước giải)
- */
+import type { GradeCurriculum } from '../src/types/curriculum.ts';
 export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
   {
     "grade": "12",
@@ -122,7 +112,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
               "shortAnswer": [
                 {
                   "id": "12-c1-b1-sa1",
-                  "problem": "Cho hàm số $y = x^3 - 3mx^2 + 3(m^2 - 1)x + 2$. Tìm tất cả các giá trị nguyên của tham số $m \\in [-5; 5]$ để hàm số có hai điểm cực trị nằm về hai phía của trục tung $Oy$.",
+                  "problem": "Có bao nhiêu giá trị nguyên của tham số $m \\in [-5; 5]$ để đồ thị hàm số $y = x^3 - 3mx^2 + 3(m^2 - 1)x + 2$ có hai điểm cực trị nằm về hai phía của trục tung $Oy$?",
                   "correctValue": 1,
                   "acceptableAnswers": [
                     "1",
@@ -146,7 +136,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                       "description": "Vì $m \\in \\mathbb{Z}$ nên $m = 0$. Có 1 giá trị duy nhất."
                     }
                   ],
-                  "explanation": "Hai nghiệm của $y' = 0$ trái dấu khi $m^2 - 1 < 0 \\iff -1 < m < 1$. Do $m$ nguyên nên $m = 0$."
+                  "explanation": "Hai nghiệm của $y' = 3x^2 - 6mx + 3(m^2 - 1) = 0$ trái dấu khi $x_1 x_2 = m^2 - 1 < 0 \\iff -1 < m < 1$. Do $m \\in \\mathbb{Z}$ nên chỉ có $m = 0$, tức là có $1$ giá trị nguyên."
                 }
               ]
             }
@@ -183,11 +173,11 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$11$"
+                      "content": "$3$"
                     },
                     {
                       "key": "B",
-                      "content": "$3$"
+                      "content": "$11$"
                     },
                     {
                       "key": "C",
@@ -198,7 +188,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                       "content": "$19$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "B",
                   "cognitiveLevel": "Thông hiểu",
                   "explanation": "$f(0) = 3, f(1) = 2, f(2) = 11 \\implies \\max = 11$."
                 }
@@ -300,7 +290,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$y = 2$"
+                      "content": "$y = -1$"
                     },
                     {
                       "key": "B",
@@ -308,14 +298,14 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "C",
-                      "content": "$y = -1$"
+                      "content": "$y = 2$"
                     },
                     {
                       "key": "D",
                       "content": "$x = 2$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "C",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$\\lim_{x \\to \\pm\\infty} \\frac{2x - 1}{x + 1} = 2 \\implies y = 2$ là tiệm cận ngang."
                 }
@@ -424,7 +414,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$(2; 1; 0)$"
+                      "content": "$(1; -1; 1)$"
                     },
                     {
                       "key": "B",
@@ -436,10 +426,10 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "D",
-                      "content": "$(1; -1; 1)$"
+                      "content": "$(2; 1; 0)$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "D",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$M = \\left(\\frac{1+3}{2}; \\frac{2+0}{2}; \\frac{-1+1}{2}\\right) = (2; 1; 0)$."
                 }
@@ -661,11 +651,11 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$2$"
+                      "content": "$1$"
                     },
                     {
                       "key": "B",
-                      "content": "$1$"
+                      "content": "$2$"
                     },
                     {
                       "key": "C",
@@ -676,7 +666,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                       "content": "$4$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "B",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$[x^2 + x]_0^1 = 2$."
                 }
@@ -774,7 +764,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$9$"
+                      "content": "$3$"
                     },
                     {
                       "key": "B",
@@ -782,14 +772,14 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "C",
-                      "content": "$3$"
+                      "content": "$9$"
                     },
                     {
                       "key": "D",
                       "content": "$9\\pi$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "C",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$S = \\int_0^3 x^2 dx = [x^3/3]_0^3 = 9$."
                 }
@@ -895,7 +885,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$\\vec{n} = (2; -1; 3)$"
+                      "content": "$\\vec{n} = (-1; 3; -5)$"
                     },
                     {
                       "key": "B",
@@ -907,10 +897,10 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "D",
-                      "content": "$\\vec{n} = (-1; 3; -5)$"
+                      "content": "$\\vec{n} = (2; -1; 3)$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "D",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$\\vec{n} = (2; -1; 3)$."
                 }
@@ -1145,11 +1135,11 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$\\cos 2a = \\cos^2 a - \\sin^2 a$"
+                      "content": "$\\cos 2a = \\cos^2 a + \\sin^2 a$"
                     },
                     {
                       "key": "B",
-                      "content": "$\\cos 2a = \\cos^2 a + \\sin^2 a$"
+                      "content": "$\\cos 2a = \\cos^2 a - \\sin^2 a$"
                     },
                     {
                       "key": "C",
@@ -1160,7 +1150,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                       "content": "$\\cos 2a = 1 - 2\\cos^2 a$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "B",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "Công thức nhân đôi chuẩn mực: $\\cos 2a = \\cos^2 a - \\sin^2 a$."
                 }
@@ -1254,7 +1244,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$x = \\frac{\\pi}{2} + k\\pi, k \\in \\mathbb{Z}$"
+                      "content": "$x = \\frac{\\pi}{2} + k2\\pi, k \\in \\mathbb{Z}$"
                     },
                     {
                       "key": "B",
@@ -1262,14 +1252,14 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "C",
-                      "content": "$x = \\frac{\\pi}{2} + k2\\pi, k \\in \\mathbb{Z}$"
+                      "content": "$x = \\frac{\\pi}{2} + k\\pi, k \\in \\mathbb{Z}$"
                     },
                     {
                       "key": "D",
                       "content": "$x = \\pi + k2\\pi, k \\in \\mathbb{Z}$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "C",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "Nghiệm của $\\cos x = 0$ là $x = \\frac{\\pi}{2} + k\\pi$."
                 }
@@ -1321,15 +1311,15 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "isRealWorldModeling": true,
                   "modelingSteps": [
                     {
-                      "stepName": "Bước 1: Điều kiện đạt max",
-                      "description": "$\\sin\\left[\\frac{2\\pi}{365}(t - 80)\\right] = 1$."
+                      "stepName": "Bước 1: Điểm cực đại trên tập số thực",
+                      "description": "$\\sin\\left[\\frac{2\\pi}{365}(t - 80)\\right] = 1 \\iff \\frac{2\\pi}{365}(t - 80) = \\frac{\\pi}{2} \\iff t = 80 + 91{,}25 = 171{,}25$."
                     },
                     {
-                      "stepName": "Bước 2: Giải tìm $t$",
-                      "description": "$\\frac{2\\pi}{365}(t - 80) = \\frac{\\pi}{2} \\implies t \\approx 171$."
+                      "stepName": "Bước 2: Chọn ngày nguyên $t \\in \\mathbb{Z}$ gần điểm cực đại nhất",
+                      "description": "Vì $|171 - 171{,}25| = 0{,}25 < |172 - 171{,}25| = 0{,}75$ nên $d(171) > d(172)$, đạt giá trị lớn nhất tại ngày thứ $t = 171$."
                     }
                   ],
-                  "explanation": "Đạt cực đại khi $t \\approx 171$."
+                  "explanation": "Hàm đạt cực đại liên tục tại $t = 171{,}25$; xét trên các ngày nguyên $t \\in \\mathbb{Z}, 1 \\le t \\le 365$, giá trị lớn nhất đạt tại $t = 171$."
                 }
               ]
             }
@@ -1374,7 +1364,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$11$"
+                      "content": "$15$"
                     },
                     {
                       "key": "B",
@@ -1386,10 +1376,10 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "D",
-                      "content": "$15$"
+                      "content": "$11$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "D",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$u_5 = 3 + 4(2) = 11$."
                 }
@@ -1613,11 +1603,11 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "Đường thẳng $a$ không có điểm chung với mặt phẳng $(P)$"
+                      "content": "Đường thẳng $a$ có đúng 1 điểm chung với mặt phẳng $(P)$"
                     },
                     {
                       "key": "B",
-                      "content": "Đường thẳng $a$ có đúng 1 điểm chung với mặt phẳng $(P)$"
+                      "content": "Đường thẳng $a$ không có điểm chung với mặt phẳng $(P)$"
                     },
                     {
                       "key": "C",
@@ -1628,7 +1618,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                       "content": "Đường thẳng $a$ vuông góc với mặt phẳng $(P)$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "B",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "Theo định nghĩa, đường thẳng song song với mặt phẳng thì không có điểm chung nào."
                 }
@@ -1731,7 +1721,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$4$"
+                      "content": "$0$"
                     },
                     {
                       "key": "B",
@@ -1739,14 +1729,14 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "C",
-                      "content": "$0$"
+                      "content": "$4$"
                     },
                     {
                       "key": "D",
                       "content": "$\\infty$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "C",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$\\lim_{x \\to 2} (x + 2) = 4$."
                 }
@@ -1852,7 +1842,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$x = 9$"
+                      "content": "$x = 10$"
                     },
                     {
                       "key": "B",
@@ -1864,10 +1854,10 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "D",
-                      "content": "$x = 10$"
+                      "content": "$x = 9$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "D",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$x - 1 = 2^3 = 8 \\iff x = 9$."
                 }
@@ -1908,26 +1898,26 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
               "shortAnswer": [
                 {
                   "id": "11-c6-b1-sa1",
-                  "problem": "Dân số của một quốc gia sau $t$ năm kể từ năm 2020 được ước tính theo công thức $N(t) = 100 \\cdot e^{0{,}012 t}$ (triệu người). Hỏi sau bao nhiêu năm (kể từ năm 2020) thì dân số vượt qua 120 triệu người? (Làm tròn đến số nguyên)",
-                  "correctValue": 15,
+                  "problem": "Dân số của một quốc gia sau $t$ năm nguyên ($t \\in \\mathbb{N}^*$) kể từ năm 2020 được ước tính theo công thức $N(t) = 100 \\cdot e^{0{,}012 t}$ (triệu người). Hỏi sau ít nhất bao nhiêu năm nguyên (kể từ năm 2020) thì dân số vượt qua 120 triệu người?",
+                  "correctValue": 16,
                   "acceptableAnswers": [
-                    "15",
-                    "15 năm"
+                    "16",
+                    "16 năm"
                   ],
                   "unit": "năm",
                   "cognitiveLevel": "Vận dụng",
                   "isRealWorldModeling": true,
                   "modelingSteps": [
                     {
-                      "stepName": "Bước 1: Bất phương trình",
-                      "description": "$e^{0{,}012 t} \\ge 1{,}2$."
+                      "stepName": "Bước 1: Thiết lập bất phương trình vượt ngưỡng",
+                      "description": "$100 \\cdot e^{0{,}012 t} > 120 \\iff e^{0{,}012 t} > 1{,}2$."
                     },
                     {
-                      "stepName": "Bước 2: Logarit",
-                      "description": "$t \\ge \\frac{\\ln 1{,}2}{0{,}012} \\approx 15{,}2 \\approx 15$."
+                      "stepName": "Bước 2: Giải nghiệm thực và chọn số năm nguyên nhỏ nhất",
+                      "description": "$t > \\frac{\\ln 1{,}2}{0{,}012} \\approx 15{,}19$. Với $t \\in \\mathbb{N}^*$, tại $t = 15$ thì $N(15) \\approx 119{,}72 < 120$ (chưa vượt); tại $t = 16$ thì $N(16) \\approx 121{,}17 > 120$."
                     }
                   ],
-                  "explanation": "$t \\approx 15$ năm."
+                  "explanation": "Nghiệm liên tục $t > \\frac{\\ln 1{,}2}{0{,}012} \\approx 15{,}19$ năm. Vì $t \\in \\mathbb{N}^*$ và tại $t = 15$ dân số mới đạt $119{,}72 < 120$, nên cần ít nhất $16$ năm nguyên để vượt qua 120 triệu người."
                 }
               ]
             }
@@ -2097,11 +2087,11 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$BC \\perp (SAB)$"
+                      "content": "$BC \\perp (SAC)$"
                     },
                     {
                       "key": "B",
-                      "content": "$BC \\perp (SAC)$"
+                      "content": "$BC \\perp (SAB)$"
                     },
                     {
                       "key": "C",
@@ -2112,7 +2102,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                       "content": "$AC \\perp (SAB)$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "B",
                   "cognitiveLevel": "Thông hiểu",
                   "explanation": "$BC \\perp AB$ và $BC \\perp SA \\implies BC \\perp (SAB)$."
                 }
@@ -2219,7 +2209,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$0{,}12$"
+                      "content": "$0{,}1$"
                     },
                     {
                       "key": "B",
@@ -2227,14 +2217,14 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "C",
-                      "content": "$0{,}1$"
+                      "content": "$0{,}12$"
                     },
                     {
                       "key": "D",
                       "content": "$0{,}58$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "C",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "Do $A$ và $B$ độc lập nên $P(AB) = P(A)P(B) = 0{,}3 \\times 0{,}4 = 0{,}12$."
                 }
@@ -2347,7 +2337,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$(2; 4]$"
+                      "content": "(1; 4)"
                     },
                     {
                       "key": "B",
@@ -2359,10 +2349,10 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "D",
-                      "content": "(1; 4)"
+                      "content": "$(2; 4]$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "D",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "Phần chung của $[1; 4]$ và $(2; 6)$ là $(2; 4]$."
                 }
@@ -2592,11 +2582,11 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$7$"
+                      "content": "$9$"
                     },
                     {
                       "key": "B",
-                      "content": "$9$"
+                      "content": "$7$"
                     },
                     {
                       "key": "C",
@@ -2607,7 +2597,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                       "content": "$8$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "B",
                   "cognitiveLevel": "Thông hiểu",
                   "explanation": "$a^2 = 25 + 64 - 2(5)(8)(0{,}5) = 49 \\implies a = 7$."
                 }
@@ -2713,7 +2703,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$\\vec{AB} + \\vec{AD} = \\vec{AC}$"
+                      "content": "$\\vec{AB} + \\vec{AD} = \\vec{BD}$"
                     },
                     {
                       "key": "B",
@@ -2721,14 +2711,14 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "C",
-                      "content": "$\\vec{AB} + \\vec{AD} = \\vec{BD}$"
+                      "content": "$\\vec{AB} + \\vec{AD} = \\vec{AC}$"
                     },
                     {
                       "key": "D",
                       "content": "$\\vec{BA} + \\vec{BC} = \\vec{DB}$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "C",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "Quy tắc hình bình hành: $\\vec{AB} + \\vec{AD} = \\vec{AC}$."
                 }
@@ -2830,7 +2820,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$6$"
+                      "content": "$8$"
                     },
                     {
                       "key": "B",
@@ -2842,10 +2832,10 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "D",
-                      "content": "$8$"
+                      "content": "$6$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "D",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$\\bar{x} = (2 + 4 + 6 + 8 + 10)/5 = 30/5 = 6$."
                 }
@@ -3070,11 +3060,11 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$1$"
+                      "content": "$5$"
                     },
                     {
                       "key": "B",
-                      "content": "$5$"
+                      "content": "$1$"
                     },
                     {
                       "key": "C",
@@ -3085,7 +3075,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                       "content": "$3$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "B",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$d = \\frac{|3(1) - 4(2) + 10|}{\\sqrt{9 + 16}} = \\frac{|5|}{5} = 1$."
                 }
@@ -3190,7 +3180,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$C_{10}^3 = 120$"
+                      "content": "$30$"
                     },
                     {
                       "key": "B",
@@ -3198,14 +3188,14 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "C",
-                      "content": "$30$"
+                      "content": "$C_{10}^3 = 120$"
                     },
                     {
                       "key": "D",
                       "content": "$10^3 = 1000$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "C",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "Chọn 3 người không phân biệt thứ tự là một tổ hợp: $C_{10}^3 = 120$."
                 }
@@ -3313,7 +3303,7 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                   "options": [
                     {
                       "key": "A",
-                      "content": "$0{,}5$"
+                      "content": "$2/3$"
                     },
                     {
                       "key": "B",
@@ -3325,10 +3315,10 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
                     },
                     {
                       "key": "D",
-                      "content": "$2/3$"
+                      "content": "$0{,}5$"
                     }
                   ],
-                  "correctAnswer": "A",
+                  "correctAnswer": "D",
                   "cognitiveLevel": "Nhận biết",
                   "explanation": "$n(\\Omega) = 6$, số chẵn là $\\{2; 4; 6\\} \\implies n(A) = 3$. $P = 3/6 = 0{,}5$."
                 }
@@ -3403,5 +3393,3 @@ export const HIGH_SCHOOL_CURRICULUM: GradeCurriculum[] = [
     ]
   }
 ];
-
-export default HIGH_SCHOOL_CURRICULUM;

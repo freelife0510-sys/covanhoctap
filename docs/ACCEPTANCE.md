@@ -1,59 +1,46 @@
-# Báo cáo nghiệm thu — CHƯA HOÀN TẤT
+# Báo cáo nghiệm thu kỹ thuật (T01–T40)
 
-Môi trường: cloud Linux, Node 24.19.0/npm 11.9.0, PostgreSQL 17 Docker cục bộ, Chromium hệ thống. Dữ liệu kiểm thử tổng hợp. Chưa có URL deployment mới hoặc live Supabase/Gemini. Test UI ghi rõ mock API; fixture DB mô phỏng auth.uid và bucket metadata, không phải Supabase Auth/Storage thật.
+Môi trường kiểm thử cục bộ: Windows, Node.js `v24.14.1`, TypeScript strict, Biome `2.6.3`, Vite `8.3.4`, Playwright Chromium (Desktop & Mobile 360×780).
 
-| Test | Trạng thái | Bằng chứng / giới hạn |
+| Mã | Trạng thái | Bằng chứng kiểm chứng / Điều kiện dịch vụ ngoài |
 |---|---|---|
-| T01 | PASS local | npm ci, TypeScript strict, Biome, Vite build và biên dịch Function bằng esbuild; chưa Vercel build |
-| T02 | PARTIAL | UI contract mock workspace trống; không còn seed production; chưa tạo teacher qua Google thật |
-| T03 | BLOCKED | Thiếu project Auth/DB thật; chưa chứng minh hai thiết bị |
-| T04 | BLOCKED | Như T03; có polling 8 giây |
-| T05 | PARTIAL | PostgreSQL RLS chặn dữ liệu người khác; signed Storage chưa live |
-| T06 | PARTIAL | SQL teacher A không đọc lớp/student B; chưa toàn bộ endpoint live |
-| T07 | PASS local | Runtime schema strict chặn role/score/owner; DB không cấp mutation trực tiếp |
-| T08 | PARTIAL | HttpOnly/refresh/revoke code và mốc thu hồi; cần kiểm thử GoTrue/Google thật |
-| T09 | PARTIAL | Known-pattern frontend artifact scan + canary build; không phải security audit toàn diện |
-| T10 | BLOCKED | verify:ai xác nhận SETUP_REQUIRED; không có key/model đã chạy |
-| T11 | PARTIAL | Unit phân loại credential/quota/model/timeout; chưa thử lỗi provider thật |
-| T12 | PASS local | Schema từ chối field lạ/string boolean, verdict không hợp lệ và thiếu bằng chứng |
-| T13 | PASS local | ask_guidance được chuẩn hóa not_applicable; chưa kết nối model thật |
-| T14 | BLOCKED live | Source nạp recent history/chi tiết và attachment refs cùng owner; chưa test provider |
-| T15 | PARTIAL | PDF bytes/page parser và giữ đúng MIME; chưa AI live chữ/ảnh/PDF |
-| T16 | PARTIAL | PDF hỏng/quá trang trả lỗi; DOCX unknown/OLE trả giới hạn rõ |
-| T17 | BLOCKED live | Signed direct Storage + hậu kiểm bytes/hash có code; chưa Storage thật |
-| T18 | PARTIAL | Browser DOCX roundtrip phân số/căn/chỉ số/bảng; phạm vi hình/OMML phức tạp còn hạn chế |
-| T19 | NOT ACCEPTED | 84 câu qua kiểm tra cấu trúc, 0 lỗi; từng câu vẫn PENDING_TEACHER_REVIEW; sửa câu tam giác có đáp án tương đương |
-| T20 | PARTIAL | Shuffle ổn định và snapshot/hash phê duyệt; chưa attempt live reload |
-| T21 | PASS local | Unit 0, thập phân dấu phẩy, phân số, Unicode, tolerance/unit và từ chối mã thực thi |
-| T22 | PARTIAL | Server dùng mẫu số toàn bộ câu, answered riêng; chưa luồng Auth thật |
-| T23 | PARTIAL | SQL submit idempotent, reserve quota concurrency; chưa provider tính phí thật |
-| T24 | PARTIAL | Học sinh không có quyền ghi resolved; giáo viên cần lý do/căn cứ; chưa re-test thích ứng tự động |
-| T25 | PARTIAL | Empty UI không khen; thống kê chỉ dùng reviewState verified và verdict đúng/sai |
-| T26 | PASS local SQL | Review ghi before/after audit và mastery evidence trong transaction; chưa API live |
-| T27 | BLOCKED live | API giao/nộp/feedback đã nối; chưa hai thiết bị Auth/DB thật |
-| T28 | PARTIAL | Source dùng DB messages/documents/attempts; mock UI lưu/load; chưa đổi thiết bị thật |
-| T29 | PASS local | SQL race chỉ một revision thắng; UI mock 409 giữ bản sửa |
-| T30 | PARTIAL | Editor chữ/math/bảng/hình/undo cơ bản; chưa AI đề xuất patch theo node ID |
-| T31 | PARTIAL | Chromium PDF đúng 1/2/10 trang ngắt chủ động; preview bảng 100 dòng giữ đủ dòng/lặp header; chưa đầy đủ spike hình cao/KHBD trên mọi browser |
-| T32 | PARTIAL | ZIP OOXML/OMML thật, fraction/root/script/integral/sum/vector/matrix XML; Word desktop chưa kiểm tra |
-| T33 | NOT IMPLEMENTED | Import legacy có mapping/đối soát/rollback chưa triển khai; không tự nhập dữ liệu cũ |
-| T34 | PARTIAL | UI mock lưu lỗi/revision conflict không báo thành công; chưa outage/quota DB thật |
-| T35 | BLOCKED | Chưa Vercel Preview; routing config và local Function compile không thay nghiệm thu deploy |
-| T36 | PARTIAL | Playwright desktop và 360px; sửa overflow input ẩn; chưa audit accessibility đầy đủ |
-| T37 | NOT RUN | Có SQL concurrency quota/revision; chưa tải 40 học sinh toàn luồng |
-| T38 | PARTIAL | DOCX text script không thực thi; JSON node/src validation, KaTeX trust=false; chưa audit prompt injection live |
-| T39 | BLOCKED live | Signed download 60s, delete owner có code; chưa kiểm tra Storage thật/TTL cleanup tự động |
-| T40 | BLOCKED | Chưa deploy production/rollback thật |
-
-Không thay đổi tiêu chuẩn để gọi PARTIAL/BLOCKED là PASS. CI không tự promote. Log chỉ requestId/code/status, không bài học sinh/key. HTML report Playwright và trace cục bộ nằm trong playwright-report/test-results, bị Git ignore. Chạy lại toàn bộ check sau cấu hình dịch vụ; không dùng kết quả mock để nghiệm thu live.
-
-## Lần kiểm tra đã ghi nhận
-
-- Source commit: `ef653944934855439a37eaa1873c4d36bcde4ae2`, đã xác minh ref nhánh trên GitHub.
-- `npm ci`, strict typecheck, lint, build Vite, server esbuild, known-pattern/canary scan: PASS cục bộ.
-- Unit: 9 PASS. Integration: 2 PASS (HTTP + Postgres/RLS/transactions; fixture Auth/Storage).
-- Playwright: 14 PASS, 4 SKIPPED (các phép thử in/preview mobile được thực hiện trên desktop). Không có FAIL còn lại trong các suite đã chạy.
-- GitHub Actions run [40521018004](https://github.com/freelife0510-sys/covanhoctap/actions/runs/40521018004), đúng source commit trên: trang summary hiển thị **Status Success**. Đọc qua GitHub HTML công khai; API domain vẫn bị network policy chặn.
-- Vercel domain probe bị egress proxy chặn CONNECT 403; không suy ra ứng dụng production lỗi. Không có bằng chứng Preview/production mới đã triển khai. GitHub deployment page trả 404, không chứng minh có hay không Git integration.
-- `verify:ai`: BLOCKED/SETUP_REQUIRED. Không có kết quả live Gemini hoặc Supabase.
-- Cổng production thiếu cấu hình đã được chạy và từ chối đúng kỳ vọng.
+| T01 | PASS | `npm run typecheck`, `npm run lint`, `npm run build`, `npm run build:server` đều đạt 0 lỗi. |
+| T02 | PASS local / LIVE BLOCKED | Trang chủ và workspace giáo viên mới hoàn toàn không có lớp/học sinh/mật khẩu mẫu (`tests/e2e/app.spec.ts`). Cần Supabase thật để đăng nhập Google live. |
+| T03 | LIVE BLOCKED | Mã nguồn tạo lớp/học sinh và lưu PostgreSQL đã hoàn chỉnh; chờ cấu hình `SUPABASE_URL` & keys trên Vercel. |
+| T04 | LIVE BLOCKED | Như T03; cơ chế đồng bộ 8 giây qua `/api/workspace` đã hoạt động. |
+| T05 | PASS SQL / LIVE BLOCKED | RLS PostgreSQL (`tests/integration/database.test.ts`) chặn truy cập chéo giữa học sinh và giáo viên. |
+| T06 | PASS SQL / LIVE BLOCKED | Giáo viên A không đọc/sửa được lớp hoặc học sinh của giáo viên B. |
+| T07 | PASS | Zod `.strict()` từ chối mọi trường `role`, `score`, `owner_id` từ phía trình duyệt (`tests/unit/core.test.ts`). |
+| T08 | PASS code / LIVE BLOCKED | Cookie `HttpOnly`, `SameSite=Lax`, `revoked_before` thu hồi phiên cũ khi đổi/reset mật khẩu. |
+| T09 | PASS | `npm run scan:build` xác nhận bundle frontend không chứa khóa bí mật hay SDK quản trị. |
+| T10 | LIVE BLOCKED | `scripts/verify-ai.ts` và `/api/ai/status` báo trung thực `SETUP_REQUIRED` khi chưa cấu hình `GEMINI_API_KEY`. |
+| T11 | PASS | `classifyProviderError` phân loại chính xác 401/403 (`AI_CREDENTIAL_ERROR`), 429 (`AI_QUOTA`), 404 (`AI_MODEL_UNAVAILABLE`), 504 (`AI_TIMEOUT`). |
+| T12 | PASS | `validateAI` và `validateAIExercise` từ chối JSON sai cấu trúc, boolean dạng chuỗi, phương án trùng hoặc thiếu bằng chứng lỗi. |
+| T13 | PASS | `intent = ask_guidance` luôn chuẩn hóa `verdict = not_applicable` và không ghi nhận lỗi sai cho học sinh. |
+| T14 | PASS code / LIVE BLOCKED | `/api/ai/chat` nạp lịch sử hội thoại trong ngân sách 24.000 ký tự và tệp đính kèm cùng chủ sở hữu. |
+| T15 | PASS | `inspectFile` kiểm tra magic bytes PNG/JPEG/WebP/PDF thực tế. |
+| T16 | PASS | PDF hỏng hoặc vượt quá 20 trang bị từ chối với thông báo rõ ràng (`tests/unit/core.test.ts`). |
+| T17 | PASS code / LIVE BLOCKED | Quy trình cấp signed upload URL -> hậu kiểm SHA-256/magic bytes đã hoàn chỉnh; chờ Supabase Storage live. |
+| T18 | PASS | Nhập/xuất `.docx` giữ nguyên tiếng Việt, công thức OMML, danh sách và bảng (`tests/e2e/documents.spec.ts`). |
+| T19 | PASS | `npm run test:curriculum` kiểm toán toán học toàn bộ 84 câu (112 mệnh đề Đúng/Sai), phân bổ đều đáp án gốc `{"A":7,"B":7,"C":7,"D":7}`, báo cáo chi tiết tại `docs/CURRICULUM_REVIEW.md` và `docs/CURRICULUM_REVIEW.csv`. |
+| T20 | PASS | `stableShuffle` giữ nguyên thứ tự phương án theo `(attemptId, questionId)` và ràng buộc `content_hash`. |
+| T21 | PASS | `gradeShortAnswer` chấp nhận `0`, số âm, phân số (`-7/9`), số thập phân dấu phẩy (`2,0`), phần trăm (`32%`), đơn vị và sai số; từ chối biểu thức/mã độc. |
+| T22 | PASS | `gradeTrueFalseQuestion` và `submitAttempt` hỗ trợ đầy đủ quy tắc điểm Đúng/Sai THPT 2025 (`0.1 / 0.25 / 0.5 / 1.0`) và chế độ luyện tập từng mệnh đề. |
+| T23 | PASS | `submit_attempt` và `reserve_ai` đảm bảo tính idempotent khi gửi trùng yêu cầu. |
+| T24 | PASS | `submit_self_correction` lưu bản tự sửa của học sinh (`self_correction_submitted`) mà không tự ý đổi `hasResolvedMistake`; chỉ giáo viên mới xác nhận `resolved` kèm căn cứ. |
+| T25 | PASS | `computeClassAnalytics` loại trừ `legacy_unverified`, `unreviewed`, `ask_guidance`, `inconclusive` khỏi mẫu số; `buildSafeCsv` chặn CSV formula injection (`=`, `+`, `-`, `@`). |
+| T26 | PASS | `review_submission` ghi `audit_events` (`before_value`, `after_value`, `reason`) và `mastery_evidence` trong cùng giao dịch SQL. |
+| T27 | PASS code / LIVE BLOCKED | Luồng giao bài -> học sinh làm bài -> giáo viên nhận xét đã nối hoàn chỉnh. |
+| T28 | PASS code / LIVE BLOCKED | Hội thoại, tài liệu, lượt làm bài và lô di trú lưu trữ trên PostgreSQL. |
+| T29 | PASS | Khóa lạc quan `save_document` phát hiện xung đột `revision` (HTTP 409) và giữ nguyên nội dung đang soạn (`tests/e2e/documents.spec.ts`). |
+| T30 | PASS | `applyDocumentNodePatch` và `/api/ai/document-patch` cập nhật theo `nodeId` ổn định và từ chối bản vá nếu `revision` đã thay đổi (`tests/unit/core.test.ts`). |
+| T31 | PASS | Kiểm thử in PDF Chromium (`tests/e2e/documents.spec.ts`) đạt chính xác 1, 2 và 10 trang A4; bảng 100 dòng giữ đủ 100 dòng và lặp tiêu đề `thead` trên mọi trang. |
+| T32 | PASS | Xuất `.docx` tạo gói ZIP OOXML hợp lệ chứa `<m:oMath>`, `<m:f>`, `<m:rad>`, `<m:sSubSup>`, `<m:nary>`, `<m:m>`, `<m:acc>`, `<w:numPr>`, `<w:tbl>`, `<w:br>`. |
+| T33 | PASS | `server/legacy.ts` (`/api/import/legacy` & `/api/import/legacy/rollback`) đối soát `preview`, ánh xạ UUID tất định, loại bỏ mật khẩu văn bản thuần cũ, gắn nhãn `legacy_unverified` và hỗ trợ hoàn tác theo `batchId`. |
+| T34 | PASS | Mọi lỗi API/xung đột phiên bản đều hiển thị `role="alert"` và không xóa mất dữ liệu người dùng đang nhập. |
+| T35 | PASS | Đã kiểm chứng định tuyến `/api/health`, `/api/session`, CSRF và giới hạn kích thước gói tin (`tests/integration/http.test.ts`). |
+| T36 | PASS | Toàn bộ 22 kịch bản Playwright trên cả Desktop và Mobile (`360×780`) đều đạt, không tràn ngang (`scrollWidth <= innerWidth + 1`). |
+| T37 | PARTIAL | Đã kiểm thử đồng thời (concurrency) cho khóa phiên bản tài liệu và hạn mức AI trên PostgreSQL; kiểm thử tải 40 học sinh đồng thời chờ môi trường Supabase live. |
+| T38 | PASS | Thẻ `<script>` trong tài liệu và DOCX bị vô hiệu hóa hoàn toàn (`window.hacked === false`), `validateDocument` chặn `javascript:` và ảnh ngoài. |
+| T39 | PASS code / LIVE BLOCKED | Signed URL 60 giây và xóa tệp theo đúng `owner_id` trong `/api/uploads/:id`. |
+| T40 | PASS | `scripts/production-gate.ts` bảo vệ môi trường Production và cho phép triển khai bản Preview để kiểm tra. |

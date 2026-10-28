@@ -1,13 +1,33 @@
-# Hướng dẫn dùng bản mới sau khi cấu hình dịch vụ
+# Hướng dẫn sử dụng hệ thống Cố Vấn Học Tập (GDPT 2018)
 
-Giáo viên chọn “Giáo viên · Chọn tài khoản Google”, chọn đúng tài khoản Google đang hoạt động rồi hệ thống hoàn tất OAuth và kết nối phiên đăng nhập. Google OAuth phải được cấu hình ở Supabase; giáo viên vẫn cần được chủ ứng dụng cấp quyền trong `teacher_access`. Tài khoản mới trống. Tạo lớp, cấp mã học sinh; mật khẩu ngẫu nhiên chỉ xuất hiện một lần. Giao riêng cho học sinh, không đưa lên nhóm công khai. Đặt lại mật khẩu sẽ yêu cầu đăng nhập/đổi lại; không có chức năng đọc mật khẩu cũ.
+## 1. Dành cho Giáo viên / Cố vấn
 
-Học sinh đăng nhập bằng mã và mật khẩu; đổi mật khẩu được cấp trước khi học. Khi vào không gian học tập, hệ thống kiểm tra AI đã được cấu hình; Gemini API key chỉ được đọc ở máy chủ và được gọi khi học sinh gửi câu hỏi/lời giải, không gọi tính phí chỉ vì đăng nhập. Quản trị viên cần cấu hình `GEMINI_API_KEY`, model đã xác minh và hai biến giới hạn sử dụng trên Vercel. “Hỏi hướng dẫn” không chấm điểm. “Nộp lời giải” mới yêu cầu đánh giá; kết quả AI chưa được giáo viên xác minh có nhãn rõ ràng. Ảnh/PDF tối đa 10 MB; PDF không quá 20 trang. Nếu báo lỗi cấu hình hoặc chưa đọc được file, chưa có kết quả để kết luận.
+1. **Đăng nhập**: Chọn **“Giáo viên · Chọn tài khoản Google”**, chọn tài khoản Google muốn sử dụng. Hệ thống thực hiện xác thực PKCE qua Supabase Auth và kiểm tra quyền trong bảng `public.teacher_access`.
+2. **Quản lý lớp & cấp tài khoản học sinh**:
+   - Tạo lớp mới theo khối (10, 11, 12), năm học và mã lớp.
+   - Cấp tài khoản học sinh theo họ tên và mã học sinh duy nhất. Mật khẩu tạm thời ngẫu nhiên chỉ hiển thị **một lần duy nhất**; giao riêng cho học sinh và học sinh sẽ được yêu cầu đổi mật khẩu ngay lần đăng nhập đầu tiên.
+   - Xuất danh sách học sinh ra CSV qua nút **“Xuất CSV học sinh”** (đã tự động chống lỗi công thức Excel/Sheets).
+3. **Giao bài, Thẩm định bài nộp & Xác nhận khắc phục lỗi**:
+   - Giao nhiệm vụ theo lớp, bài học và hạn nộp; xem kết quả từng lượt làm và gửi phản hồi.
+   - Trong tab **Bài nộp**, kiểm tra kết luận sơ bộ của AI (`unreviewed`) và ghi căn cứ thẩm định (`correct` / `incorrect` / `inconclusive`).
+   - Khi học sinh gửi ghi chú tự sửa lỗi (`self_correction_submitted`), hệ thống hiển thị nội dung tự sửa nhưng **không tự động tính là đã khắc phục** cho đến khi giáo viên kiểm tra lại và nhấn **“Xác nhận đã khắc phục”**.
+4. **Phân tích lớp học & Di trú dữ liệu trình duyệt cũ**:
+   - Trong tab **Phân tích & Sao lưu**, xem tỉ lệ bài nộp đúng và tỉ lệ khắc phục lỗi với tử số / mẫu số minh bạch (loại trừ hoàn toàn câu hỏi gợi ý, chưa kết luận, AI chưa duyệt và dữ liệu cũ `legacy_unverified`).
+   - Sử dụng công cụ **Quét dữ liệu localStorage** hoặc dán JSON sao lưu cũ, bấm **1. Xem trước & Đối soát (Preview)** rồi **2. Nhập dữ liệu an toàn (Commit)**. Có thể hoàn tác toàn bộ lô nhập bằng nút **Rollback Batch**.
+5. **Soạn thảo tài liệu A4 & Xuất Word (.docx) / PDF**:
+   - Hỗ trợ chữ đậm/nghiêng, tiêu đề, danh sách chấm/số, bảng, hình PNG/JPEG, công thức LaTeX (`inlineMath` / `blockMath`) và ngắt trang chủ động.
+   - Đề xuất chỉnh sửa đoạn văn bằng AI theo `nodeId` và phiên bản `revision` (tự động từ chối nếu tài liệu đã bị sửa ở tab khác).
+   - Xem trước phân trang A4 đo thực tế trên DOM, xuất `.docx` chuẩn OOXML/OMML (Word Equation) và In/Lưu PDF.
 
-Giáo viên chọn “Thẩm định nội dung”, kiểm tra đề/đáp án/lời giải độc lập rồi ghi căn cứ phê duyệt. Chỉ câu đã duyệt đúng hash nội dung mới được dùng trong “Tự học”. Câu hỏi chưa đủ không được tự điền đáp án mặc định. Điểm hiển thị là luyện tập trên toàn bộ câu của lượt đó, không phải điểm thi chính thức.
+## 2. Dành cho Học sinh
 
-Giao bài chọn lớp và bài học. Học sinh mở Nhiệm vụ và nộp lượt làm; giáo viên xem lượt làm và gửi phản hồi. Hồ sơ tiến bộ chỉ ghi vùng cần củng cố đã được giáo viên thẩm định. Lưu ghi chú/tài liệu không đồng nghĩa đã khắc phục. Giáo viên xác nhận khắc phục phải dựa trên kiểm tra lại và ghi căn cứ.
-
-Soạn tài liệu: sửa chữ, công thức LaTeX, bảng, hình PNG/JPEG, undo/redo, ngắt trang. Lưu có trạng thái và phiên bản; gặp xung đột phải tải/đối chiếu trước khi lưu, không ghi đè im lặng. Trước khi đóng trang hãy kiểm tra “Đã lưu”. Preview phân trang cần tạo lại sau khi sửa. Công thức/khối quá lớn phải tách hoặc thu nhỏ. DOCX xuất là Word Equation trong phạm vi hỗ trợ, không quảng bá MathType. Cấu trúc chưa hỗ trợ sẽ báo lỗi; nhập DOCX phức tạp nên chuyển thành PDF.
-
-Dữ liệu cũ trên máy/browser vẫn được giữ; bản mới không tự sử dụng mật khẩu hoặc phiên localStorage cũ. Import legacy an toàn chưa có, không xóa dữ liệu gốc. Tạm giữ backup riêng có kiểm soát truy cập và liên hệ chủ ứng dụng trước khi di chuyển.
+1. **Đăng nhập & Đổi mật khẩu lần đầu**: Đăng nhập bằng Mã học sinh và mật khẩu tạm do giáo viên cấp, sau đó đặt mật khẩu mới (tối thiểu 12 ký tự). Hệ thống tự động đăng nhập lại và kiểm tra trạng thái kết nối Cố vấn AI.
+2. **Cố vấn AI Socratic**:
+   - Chọn **Hỏi hướng dẫn** khi cần gợi ý phương pháp (không chấm điểm, không ghi lỗi).
+   - Chọn **Nộp lời giải** khi muốn kiểm tra bài làm; có thể đính kèm ảnh chụp hoặc PDF (tối đa 10 MB, PDF không quá 20 trang).
+3. **Tự học theo bài & Luyện tập chuẩn THPT 2025**:
+   - Ôn tập lý thuyết trọng tâm và làm bài tập theo 3 dạng: Trắc nghiệm 4 lựa chọn, Đúng/Sai 4 mệnh đề (hỗ trợ cả thang điểm thi THPT 2025: 1 ý = 0,1đ; 2 ý = 0,25đ; 3 ý = 0,5đ; 4 ý = 1,0đ) và Trả lời ngắn.
+   - Có thể tạo thêm bài tập tương tự bằng AI (hiển thị rõ nhãn **Bản nháp do AI đề xuất — Chưa được giáo viên thẩm định**).
+4. **Hồ sơ tiến bộ & Tự sửa lỗi**:
+   - Xem lộ trình ôn tập thích ứng theo quy tắc (Rule-based) dựa trên các lỗi đã được giáo viên xác minh.
+   - Gửi bản tự sửa cho từng lỗi cần củng cố để giáo viên kiểm tra và xác nhận.

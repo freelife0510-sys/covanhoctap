@@ -1,36 +1,464 @@
-import React,{useEffect,useRef,useState} from 'react';
-import {useEditor,EditorContent} from '@tiptap/react';
-import {Node,type JSONContent} from '@tiptap/core';
+import React, { useEffect, useRef, useState } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import { Node, type JSONContent } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import {TableKit} from '@tiptap/extension-table';
+import { TableKit } from '@tiptap/extension-table';
 import Image from '@tiptap/extension-image';
 import Mathematics from '@tiptap/extension-mathematics';
-import {api,post} from '../services/apiClient.ts';
-import {paginateDocument} from '../documents/paginate.ts';
-import {importDocx} from '../documents/importDocx.ts';
-import {downloadDocx} from '../documents/exportDocx.ts';
-const PageBreak=Node.create({name:'pageBreak',group:'block',atom:true,parseHTML:()=>[{tag:'div[data-page-break]'}],renderHTML:()=>['div',{'data-page-break':'true',class:'page-break'},'Ngắt trang']});
-interface SavedDocument{id:string;revision:number;title:string;content:JSONContent}
-export default function DocumentEditor({initialText=''}:{initialText?:string}){
- const [id,setId]=useState<string>(()=>crypto.randomUUID());const [revision,setRevision]=useState(0);const [title,setTitle]=useState('Tài liệu học tập');const [list,setList]=useState<SavedDocument[]>([]);const [status,setStatus]=useState('Chưa lưu');const [error,setError]=useState('');const [busy,setBusy]=useState(false);const [zoom,setZoom]=useState(100);const [previewPages,setPreviewPages]=useState<HTMLElement[]>([]);const previewRef=useRef<HTMLDivElement>(null);
- const saving=useRef(false);const editGeneration=useRef(0);const [dirty,setDirty]=useState(false);
- const editor=useEditor({extensions:[StarterKit.configure({link:{protocols:['https'],autolink:false}}),TableKit,Image.configure({allowBase64:true}),Mathematics.configure({katexOptions:{throwOnError:false,trust:false}}),PageBreak],content:{type:'doc',content:initialText.split('\n').map(text=>({type:'paragraph',content:text?[{type:'text',text}]:[]}))},editorProps:{attributes:{'aria-label':'Nội dung tài liệu',class:'a4-editor'},handlePaste:(_view,event)=>{if(event.clipboardData?.types.includes('text/html')){const text=event.clipboardData.getData('text/plain');editor?.commands.insertContent({type:'paragraph',content:[{type:'text',text}]});return true;}return false;}},onUpdate:()=>{editGeneration.current++;setDirty(true);setStatus('Có thay đổi chưa lưu');}});
- useEffect(()=>{api<SavedDocument[]>('/documents').then(setList).catch(e=>setError(e.message));},[]);
- useEffect(()=>{const prevent=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',prevent);return()=>window.removeEventListener('beforeunload',prevent);},[dirty]);
- useEffect(()=>{const target=previewRef.current;if(target)target.replaceChildren(...previewPages.map(p=>p.cloneNode(true)));},[previewPages]);
- const preview=async()=>{if(!editor)return;setError('');try{await document.fonts.ready;for(const image of editor.view.dom.querySelectorAll('img'))await image.decode().catch(()=>{});setPreviewPages(paginateDocument(editor.view.dom));}catch(e){setPreviewPages([]);setError((e as Error).message);}};
- const save=async()=>{if(!editor||saving.current)return;saving.current=true;setBusy(true);setError('');const generation=editGeneration.current;try{setStatus('Đang lưu…');const r=await post<{revision:number}>('/documents',{id,revision,title,content:editor.getJSON()});setRevision(r.revision);if(generation===editGeneration.current){setDirty(false);setStatus(`Đã lưu · phiên bản ${r.revision}`);}else setStatus('Đã lưu bản trước; còn thay đổi mới');setList(await api('/documents'));}catch(e){setError((e as Error).message);setStatus('Lưu thất bại · nội dung vẫn còn trong trình soạn');}finally{setBusy(false);saving.current=false;}};
- // Serial, debounced autosave; revision conflict never overwrites another tab.
- useEffect(()=>{if(!dirty||busy||error)return;const timer=setTimeout(()=>void save(),2000);return()=>clearTimeout(timer);},[dirty,title,editor?.state.doc,revision,busy,error]);
- const load=(document:SavedDocument)=>{if(dirty&&!confirm('Bạn có thay đổi chưa lưu. Mở tài liệu khác?'))return;setId(document.id);setRevision(document.revision);setTitle(document.title);editor?.commands.setContent(document.content);setDirty(false);setStatus(`Đã tải phiên bản ${document.revision}`);setError('');};
- const addImage=async(e:React.ChangeEvent<HTMLInputElement>)=>{const file=e.target.files?.[0];if(!file||!editor)return;if(!['image/png','image/jpeg'].includes(file.type)||file.size>256000){setError('Chèn hình PNG/JPEG tối đa 256 KB.');return;}const reader=new FileReader();reader.onload=()=>{const image=new window.Image();image.onload=()=>{const width=Math.min(image.width,600);editor.chain().focus().setImage({src:String(reader.result),alt:file.name}).run();editor.commands.updateAttributes('image',{width,height:Math.round(image.height*width/image.width)});};image.src=String(reader.result);};reader.readAsDataURL(file);};
- const exportWord=async()=>{if(!editor)return;setError('');setBusy(true);try{await downloadDocx(editor.getJSON(),title);}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
- const print=async()=>{if(!editor)return;await document.fonts.ready;const surface=document.getElementById('document-print-surface');if(!surface)return;for(const image of surface.querySelectorAll('img'))await image.decode().catch(()=>{});const clone=surface.cloneNode(true) as HTMLElement;clone.id='print-root';clone.style.zoom='100%';for(const table of clone.querySelectorAll('table')){const first=table.querySelector('tr');if(first?.querySelector('th')){const head=document.createElement('thead');head.appendChild(first);table.prepend(head);}}document.body.appendChild(clone);document.body.classList.add('printing-document');try{window.print();}finally{document.body.classList.remove('printing-document');clone.remove();}};
- return <section className="panel space-y-4"><h2>Soạn tài liệu A4</h2><p className="text-sm">Soạn liên tục, ngắt trang chủ động và In/Lưu PDF. Xem trước chia trang theo kích thước đo trong trình duyệt; khối quá cao sẽ báo lỗi. Chưa nghiệm thu tương thích Microsoft Word. Công thức DOCX ngoài phạm vi hỗ trợ sẽ báo lỗi.</p>
- <div className="flex flex-wrap gap-3 no-print"><label className="grow">Tên tài liệu<input value={title} maxLength={200} onChange={e=>{setTitle(e.target.value);editGeneration.current++;setDirty(true);}}/></label><label>Tài liệu đã lưu<select value="" disabled={busy} onChange={e=>{const d=list.find(x=>x.id===e.target.value);if(d)load(d);}}><option value="">Chọn tài liệu</option>{list.map(d=><option key={d.id} value={d.id}>{d.title} · v{d.revision}</option>)}</select></label><button disabled={busy} onClick={()=>{if(dirty&&!confirm('Bỏ thay đổi chưa lưu?'))return;setId(crypto.randomUUID());setRevision(0);editor?.commands.clearContent();setTitle('Tài liệu mới');setDirty(true);}}>Tài liệu mới</button></div>
- <div className="flex flex-wrap gap-2 no-print"><button onClick={()=>editor?.chain().focus().toggleBold().run()}>Đậm</button><button onClick={()=>editor?.chain().focus().toggleItalic().run()}>Nghiêng</button><button onClick={()=>editor?.chain().focus().toggleHeading({level:2}).run()}>Tiêu đề</button><button onClick={()=>editor?.chain().focus().insertTable({rows:3,cols:3,withHeaderRow:true}).run()}>Thêm bảng</button><button onClick={()=>editor?.chain().focus().addRowAfter().run()}>Thêm dòng</button><button onClick={()=>editor?.chain().focus().deleteTable().run()}>Xóa bảng</button><button onClick={()=>{const latex=prompt('Nhập công thức LaTeX');if(latex)editor?.chain().focus().insertInlineMath({latex}).run();}}>Thêm công thức</button><button onClick={()=>{const latex=prompt('Công thức thay thế cho node đang chọn');if(latex)editor?.chain().focus().updateInlineMath({latex}).run();}}>Sửa công thức</button><label className="secondary cursor-pointer">Chèn hình<input className="sr-only" type="file" accept="image/png,image/jpeg" onChange={addImage}/></label><button onClick={()=>editor?.chain().focus().insertContent({type:'pageBreak'}).run()}>Ngắt trang</button><button onClick={()=>editor?.chain().focus().undo().run()}>Hoàn tác</button><button onClick={()=>editor?.chain().focus().redo().run()}>Làm lại</button><label className="secondary cursor-pointer">Nhập DOCX<input className="sr-only" type="file" accept=".docx" onChange={async e=>{const file=e.target.files?.[0];if(!file||!editor)return;if(dirty&&!confirm('Thay nội dung chưa lưu bằng DOCX?'))return;setBusy(true);setError('');try{const doc=await importDocx(await file.arrayBuffer());editor.commands.setContent(doc);editGeneration.current++;setDirty(true);setStatus('Đã nhập DOCX; kiểm tra trước khi lưu');}catch(err){setError((err as Error).message);}finally{setBusy(false);}}}/></label><button disabled={busy} className="button" onClick={()=>void save()}>Lưu</button><button disabled={busy} onClick={()=>void exportWord()}>Tải DOCX</button><button onClick={()=>void preview()}>Xem trước phân trang</button><button onClick={()=>void print()}>In/Lưu PDF</button><label>Thu phóng<select value={zoom} onChange={e=>setZoom(Number(e.target.value))}>{[75,100,125].map(v=><option key={v} value={v}>{v}%</option>)}</select></label></div>
- <p role="status">{status}</p>{error&&<p className="error" role="alert">{error}</p>}
- {previewPages.length>0&&<section className="space-y-3"><h3>Xem trước · {previewPages.length} trang A4</h3><p className="text-sm">Bản xem trước tại thời điểm tạo. Tạo lại sau khi sửa nội dung.</p><div className="overflow-auto bg-slate-200 p-3" ref={previewRef}/></section>}
- <div className="overflow-auto bg-slate-200 p-2 sm:p-5"><div id="document-print-surface" style={{zoom:`${zoom}%`}}><EditorContent editor={editor}/></div></div>
- </section>;
+import { api, post } from '../services/apiClient.ts';
+import { paginateDocument } from '../documents/paginate.ts';
+import { importDocx } from '../documents/importDocx.ts';
+import { downloadDocx } from '../documents/exportDocx.ts';
+import { applyDocumentNodePatch, ensureNodeIds } from '../../shared/document.ts';
+
+const PageBreak = Node.create({
+  name: 'pageBreak',
+  group: 'block',
+  atom: true,
+  parseHTML: () => [{ tag: 'div[data-page-break]' }],
+  renderHTML: () => ['div', { 'data-page-break': 'true', class: 'page-break' }, 'Ngắt trang'],
+});
+
+interface SavedDocument {
+  id: string;
+  revision: number;
+  title: string;
+  content: JSONContent;
+}
+
+export default function DocumentEditor({ initialText = '' }: { initialText?: string }) {
+  const [id, setId] = useState<string>(() => crypto.randomUUID());
+  const [revision, setRevision] = useState(0);
+  const [title, setTitle] = useState('Tài liệu học tập');
+  const [list, setList] = useState<SavedDocument[]>([]);
+  const [status, setStatus] = useState('Chưa lưu');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [zoom, setZoom] = useState(100);
+  const [previewPages, setPreviewPages] = useState<HTMLElement[]>([]);
+  const [patchInstruction, setPatchInstruction] = useState('');
+  const [patchProposal, setPatchProposal] = useState<{
+    baseRevision: number;
+    targetNodeId: string;
+    revisedText: string;
+    summary: string;
+  } | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const saving = useRef(false);
+  const editGeneration = useRef(0);
+  const [dirty, setDirty] = useState(false);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ link: { protocols: ['https'], autolink: false } }),
+      TableKit,
+      Image.configure({ allowBase64: true }),
+      Mathematics.configure({ katexOptions: { throwOnError: false, trust: false } }),
+      PageBreak,
+    ],
+    content: {
+      type: 'doc',
+      content: initialText.split('\n').map(text => ({ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] })),
+    },
+    editorProps: {
+      attributes: { 'aria-label': 'Nội dung tài liệu', class: 'a4-editor' },
+      handlePaste: (_view, event) => {
+        if (event.clipboardData?.types.includes('text/html')) {
+          const text = event.clipboardData.getData('text/plain');
+          editor?.commands.insertContent({ type: 'paragraph', content: [{ type: 'text', text }] });
+          return true;
+        }
+        return false;
+      },
+    },
+    onUpdate: () => {
+      editGeneration.current++;
+      setDirty(true);
+      setStatus('Có thay đổi chưa lưu');
+    },
+  });
+
+  useEffect(() => {
+    api<SavedDocument[]>('/documents')
+      .then(setList)
+      .catch(e => setError(e.message));
+  }, []);
+
+  useEffect(() => {
+    const prevent = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', prevent);
+    return () => window.removeEventListener('beforeunload', prevent);
+  }, [dirty]);
+
+  useEffect(() => {
+    const target = previewRef.current;
+    if (target) target.replaceChildren(...previewPages.map(p => p.cloneNode(true)));
+  }, [previewPages]);
+
+  const preview = async () => {
+    if (!editor) return;
+    setError('');
+    try {
+      await document.fonts.ready;
+      for (const image of editor.view.dom.querySelectorAll('img')) await image.decode().catch(() => {});
+      setPreviewPages(paginateDocument(editor.view.dom));
+    } catch (e) {
+      setPreviewPages([]);
+      setError((e as Error).message);
+    }
+  };
+
+  const save = async () => {
+    if (!editor || saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setError('');
+    const generation = editGeneration.current;
+    try {
+      setStatus('Đang lưu…');
+      const normalized = ensureNodeIds(editor.getJSON() as Record<string, any>);
+      const r = await post<{ revision: number }>('/documents', { id, revision, title, content: normalized });
+      setRevision(r.revision);
+      if (generation === editGeneration.current) {
+        setDirty(false);
+        setStatus(`Đã lưu · phiên bản ${r.revision}`);
+      } else setStatus('Đã lưu bản trước; còn thay đổi mới');
+      setList(await api('/documents'));
+    } catch (e) {
+      setError((e as Error).message);
+      setStatus('Lưu thất bại · nội dung vẫn còn trong trình soạn');
+    } finally {
+      setBusy(false);
+      saving.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!dirty || busy || error) return;
+    const timer = setTimeout(() => void save(), 2000);
+    return () => clearTimeout(timer);
+  }, [dirty, title, editor?.state.doc, revision, busy, error]);
+
+  const load = (document: SavedDocument) => {
+    if (dirty && !confirm('Bạn có thay đổi chưa lưu. Mở tài liệu khác?')) return;
+    setId(document.id);
+    setRevision(document.revision);
+    setTitle(document.title);
+    editor?.commands.setContent(document.content);
+    setDirty(false);
+    setPatchProposal(null);
+    setStatus(`Đã tải phiên bản ${document.revision}`);
+    setError('');
+  };
+
+  const addImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+    if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > 256000) {
+      setError('Chèn hình PNG/JPEG tối đa 256 KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new window.Image();
+      image.onload = () => {
+        const width = Math.min(image.width, 600);
+        editor.chain().focus().setImage({ src: String(reader.result), alt: file.name }).run();
+        editor.commands.updateAttributes('image', { width, height: Math.round((image.height * width) / image.width) });
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const exportWord = async () => {
+    if (!editor) return;
+    setError('');
+    setBusy(true);
+    try {
+      await downloadDocx(editor.getJSON(), title);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const print = async () => {
+    if (!editor) return;
+    await document.fonts.ready;
+    const surface = document.getElementById('document-print-surface');
+    if (!surface) return;
+    for (const image of surface.querySelectorAll('img')) await image.decode().catch(() => {});
+    const clone = surface.cloneNode(true) as HTMLElement;
+    clone.id = 'print-root';
+    clone.style.zoom = '100%';
+    for (const table of clone.querySelectorAll('table')) {
+      const first = table.querySelector('tr');
+      if (first?.querySelector('th')) {
+        const head = document.createElement('thead');
+        head.appendChild(first);
+        table.prepend(head);
+      }
+    }
+    document.body.appendChild(clone);
+    document.body.classList.add('printing-document');
+    try {
+      window.print();
+    } finally {
+      document.body.classList.remove('printing-document');
+      clone.remove();
+    }
+  };
+
+  const requestNodePatch = async () => {
+    if (!editor || revision === 0) {
+      setError('Vui lòng lưu tài liệu trước khi yêu cầu AI chỉnh sửa theo đoạn văn.');
+      return;
+    }
+    const normalized = ensureNodeIds(editor.getJSON() as Record<string, any>);
+    const firstPara = (normalized.content || []).find((n: any) => n.type === 'paragraph' && n.content?.length);
+    if (!firstPara) {
+      setError('Tài liệu chưa có đoạn văn bản để chỉnh sửa.');
+      return;
+    }
+    const targetNodeId = firstPara.attrs?.nodeId || 'block-1';
+    const currentText = (firstPara.content || []).map((c: any) => c.text || '').join(' ');
+    setBusy(true);
+    setError('');
+    try {
+      const res = await post<any>('/ai/document-patch', {
+        requestId: crypto.randomUUID(),
+        documentId: id,
+        revision,
+        targetNodeId,
+        instruction: patchInstruction || 'Chuẩn hóa diễn đạt sư phạm Toán THPT ngắn gọn, rõ ràng.',
+        currentText,
+      });
+      setPatchProposal({
+        baseRevision: res.baseRevision,
+        targetNodeId: res.targetNodeId,
+        revisedText: res.revisedText,
+        summary: res.summary,
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const acceptNodePatch = () => {
+    if (!editor || !patchProposal) return;
+    const currentDoc = ensureNodeIds(editor.getJSON() as Record<string, any>);
+    const applied = applyDocumentNodePatch(currentDoc, patchProposal.baseRevision, revision, patchProposal.targetNodeId, {
+      type: 'paragraph',
+      attrs: { nodeId: patchProposal.targetNodeId },
+      content: [{ type: 'text', text: patchProposal.revisedText }],
+    });
+    if (!applied.ok) {
+      setError(
+        applied.reason === 'REVISION_CONFLICT'
+          ? 'Tài liệu đã thay đổi phiên bản. Bản vá bị từ chối để tránh ghi đè nội dung mới.'
+          : 'Không tìm thấy đoạn văn cần cập nhật.'
+      );
+      setPatchProposal(null);
+      return;
+    }
+    editor.commands.setContent(applied.document);
+    editGeneration.current++;
+    setDirty(true);
+    setPatchProposal(null);
+    setStatus(`Đã áp dụng bản vá cho ${patchProposal.targetNodeId}; nhấn Lưu để ghi nhận.`);
+  };
+
+  return (
+    <section className="panel space-y-4">
+      <h2>Soạn tài liệu A4</h2>
+      <p className="text-sm">
+        Soạn liên tục, ngắt trang chủ động và In/Lưu PDF. Xem trước chia trang theo kích thước đo trong trình duyệt; khối quá cao sẽ báo lỗi. Chưa
+        nghiệm thu tương thích Microsoft Word. Công thức DOCX ngoài phạm vi hỗ trợ sẽ báo lỗi.
+      </p>
+      <div className="flex flex-wrap gap-3 no-print">
+        <label className="grow">
+          Tên tài liệu
+          <input
+            value={title}
+            maxLength={200}
+            onChange={e => {
+              setTitle(e.target.value);
+              editGeneration.current++;
+              setDirty(true);
+            }}
+          />
+        </label>
+        <label>
+          Tài liệu đã lưu
+          <select
+            value=""
+            disabled={busy}
+            onChange={e => {
+              const d = list.find(x => x.id === e.target.value);
+              if (d) load(d);
+            }}
+          >
+            <option value="">Chọn tài liệu</option>
+            {list.map(d => (
+              <option key={d.id} value={d.id}>
+                {d.title} · v{d.revision}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          disabled={busy}
+          onClick={() => {
+            if (dirty && !confirm('Bỏ thay đổi chưa lưu?')) return;
+            setId(crypto.randomUUID());
+            setRevision(0);
+            editor?.commands.clearContent();
+            setTitle('Tài liệu mới');
+            setDirty(true);
+          }}
+        >
+          Tài liệu mới
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2 no-print">
+        <button onClick={() => editor?.chain().focus().toggleBold().run()}>Đậm</button>
+        <button onClick={() => editor?.chain().focus().toggleItalic().run()}>Nghiêng</button>
+        <button onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}>Tiêu đề</button>
+        <button onClick={() => editor?.chain().focus().toggleBulletList().run()}>Danh sách chấm</button>
+        <button onClick={() => editor?.chain().focus().toggleOrderedList().run()}>Danh sách số</button>
+        <button onClick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>Thêm bảng</button>
+        <button onClick={() => editor?.chain().focus().addRowAfter().run()}>Thêm dòng</button>
+        <button onClick={() => editor?.chain().focus().deleteTable().run()}>Xóa bảng</button>
+        <button
+          onClick={() => {
+            const latex = prompt('Nhập công thức LaTeX');
+            if (latex) editor?.chain().focus().insertInlineMath({ latex }).run();
+          }}
+        >
+          Thêm công thức
+        </button>
+        <button
+          onClick={() => {
+            const latex = prompt('Công thức thay thế cho node đang chọn');
+            if (latex) editor?.chain().focus().updateInlineMath({ latex }).run();
+          }}
+        >
+          Sửa công thức
+        </button>
+        <label className="secondary cursor-pointer">
+          Chèn hình
+          <input className="sr-only" type="file" accept="image/png,image/jpeg" onChange={addImage} />
+        </label>
+        <button onClick={() => editor?.chain().focus().insertContent({ type: 'pageBreak' }).run()}>Ngắt trang</button>
+        <button onClick={() => editor?.chain().focus().undo().run()}>Hoàn tác</button>
+        <button onClick={() => editor?.chain().focus().redo().run()}>Làm lại</button>
+        <label className="secondary cursor-pointer">
+          Nhập DOCX
+          <input
+            className="sr-only"
+            type="file"
+            accept=".docx"
+            onChange={async e => {
+              const file = e.target.files?.[0];
+              if (!file || !editor) return;
+              if (dirty && !confirm('Thay nội dung chưa lưu bằng DOCX?')) return;
+              setBusy(true);
+              setError('');
+              try {
+                const doc = await importDocx(await file.arrayBuffer());
+                editor.commands.setContent(doc);
+                editGeneration.current++;
+                setDirty(true);
+                setStatus('Đã nhập DOCX; kiểm tra trước khi lưu');
+              } catch (err) {
+                setError((err as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        </label>
+        <button disabled={busy} className="button" onClick={() => void save()}>
+          Lưu
+        </button>
+        <button disabled={busy} onClick={() => void exportWord()}>
+          Tải DOCX
+        </button>
+        <button onClick={() => void preview()}>Xem trước phân trang</button>
+        <button onClick={() => void print()}>In/Lưu PDF</button>
+        <label>
+          Thu phóng
+          <select value={zoom} onChange={e => setZoom(Number(e.target.value))}>
+            {[75, 100, 125].map(v => (
+              <option key={v} value={v}>
+                {v}%
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <details className="rounded border p-3 bg-slate-50 no-print">
+        <summary className="cursor-pointer font-medium text-sm">Đề xuất chỉnh sửa đoạn văn bằng AI (Bảo vệ theo phiên bản v{revision})</summary>
+        <div className="mt-2 flex flex-wrap gap-2 items-end">
+          <label className="grow text-sm">
+            Yêu cầu chỉnh sửa đoạn đầu tiên
+            <input
+              disabled={busy}
+              placeholder="Ví dụ: Chuẩn hóa thuật ngữ định lý và bổ sung nhắc nhở điều kiện xác định..."
+              value={patchInstruction}
+              onChange={e => setPatchInstruction(e.target.value)}
+            />
+          </label>
+          <button type="button" disabled={busy || revision === 0} onClick={() => void requestNodePatch()}>
+            Đề xuất bản vá AI
+          </button>
+        </div>
+        {patchProposal && (
+          <div className="mt-3 rounded border border-emerald-300 bg-white p-3 space-y-2 text-sm">
+            <p className="font-semibold">
+              Đề xuất cho khối <code>{patchProposal.targetNodeId}</code> (trên phiên bản v{patchProposal.baseRevision}): {patchProposal.summary}
+            </p>
+            <p className="rounded bg-slate-50 p-2">{patchProposal.revisedText}</p>
+            <div className="flex gap-2">
+              <button type="button" className="button" onClick={acceptNodePatch}>
+                Chấp nhận bản vá
+              </button>
+              <button type="button" onClick={() => setPatchProposal(null)}>
+                Từ chối
+              </button>
+            </div>
+          </div>
+        )}
+      </details>
+
+      <p role="status">{status}</p>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {previewPages.length > 0 && (
+        <section className="space-y-3">
+          <h3>Xem trước · {previewPages.length} trang A4</h3>
+          <p className="text-sm">Bản xem trước tại thời điểm tạo. Tạo lại sau khi sửa nội dung.</p>
+          <div className="overflow-auto bg-slate-200 p-3" ref={previewRef} />
+        </section>
+      )}
+      <div className="overflow-auto bg-slate-200 p-2 sm:p-5">
+        <div id="document-print-surface" style={{ zoom: `${zoom}%` }}>
+          <EditorContent editor={editor} />
+        </div>
+      </div>
+    </section>
+  );
 }
