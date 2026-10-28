@@ -1,21 +1,112 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getUserGeminiKey, setUserGeminiKey } from '../services/apiClient.ts';
 
-const KEY_PREFIX = [65, 73, 122, 97, 83, 121].map(c => String.fromCharCode(c)).join('');
+export const KEY_PREFIX = [65, 73, 122, 97, 83, 121].map(c => String.fromCharCode(c)).join('');
+
+export function ApiKeyStepsGuide({ role = 'student', compact = false }: { role?: 'teacher' | 'student'; compact?: boolean }) {
+  const pronoun = role === 'teacher' ? 'Thầy/Cô' : 'em';
+  return (
+    <div className={`rounded-2xl bg-slate-50 border border-slate-200/80 ${compact ? 'p-3 space-y-2.5' : 'p-4 space-y-3'}`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 font-extrabold text-xs sm:text-sm text-slate-800 uppercase tracking-wide">
+          <span>🧭</span>
+          <span>HƯỚNG DẪN LẤY API KEY MIỄN PHÍ (4 BƯỚC ĐƠN GIẢN)</span>
+        </div>
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
+          Miễn phí 100%
+        </span>
+      </div>
+
+      <div className="space-y-2 text-xs sm:text-sm">
+        <div className="bg-white rounded-xl border border-slate-200/80 p-2.5 sm:p-3 flex items-start gap-2.5">
+          <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+            1
+          </span>
+          <div className="space-y-1.5">
+            <p className="font-bold text-slate-800">Bấm vào liên kết mở nhanh Google AI Studio:</p>
+            <a
+              href="https://aistudio.google.com/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm no-underline"
+            >
+              <span>🔗 Mở trang Google AI Studio</span>
+              <span>↗</span>
+            </a>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200/80 p-2.5 sm:p-3 flex items-center gap-2.5">
+          <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+            2
+          </span>
+          <p className="font-bold text-slate-800">
+            Đăng nhập bằng tài khoản Google (Gmail) cá nhân của riêng {pronoun}.
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200/80 p-2.5 sm:p-3 flex items-center gap-2.5">
+          <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+            3
+          </span>
+          <p className="text-slate-800 leading-relaxed">
+            Bấm nút{' '}
+            <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+              &quot;Create API key&quot;
+            </span>{' '}
+            ➔ Chọn{' '}
+            <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
+              &quot;Create API key in new project&quot;
+            </span>
+            .
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200/80 p-2.5 sm:p-3 flex items-center gap-2.5">
+          <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+            4
+          </span>
+          <p className="text-slate-800 leading-relaxed">
+            Sao chép (Copy) dãy mã khóa và quay lại dán vào ô nhập Gemini API Key bên dưới.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-xl bg-amber-50 border border-amber-200 p-2.5 flex items-center gap-2 text-xs text-amber-900">
+        <span className="text-base">💡</span>
+        <p>
+          <b>Lưu ý:</b>{' '}
+          {role === 'student'
+            ? 'Mỗi học sinh dùng API Key từ tài khoản Google (Gmail) cá nhân của riêng em, không gọi API chung của giáo viên. Chỉ cần làm 1 lần trên thiết bị này.'
+            : 'Chỉ cần làm 1 lần duy nhất trên thiết bị này. Khóa hoàn toàn miễn phí và bảo mật.'}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function ApiKeyModal({
   open,
   onClose,
   onSaved,
   role = 'student',
+  accountId,
 }: {
   open: boolean;
   onClose: () => void;
   onSaved: (key: string) => void;
   role?: 'teacher' | 'student';
+  accountId?: string;
 }) {
-  const [value, setValue] = useState(() => getUserGeminiKey());
+  const [value, setValue] = useState(() => getUserGeminiKey(role, accountId));
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setValue(getUserGeminiKey(role, accountId));
+      setError('');
+    }
+  }, [open, role, accountId]);
 
   if (!open) return null;
 
@@ -25,7 +116,7 @@ export default function ApiKeyModal({
     e.preventDefault();
     const trimmed = value.trim();
     if (!trimmed) {
-      setError(`Vui lòng dán mã khóa Gemini API Key (bắt đầu bằng ${KEY_PREFIX}...) vào ô bên dưới.`);
+      setError(`Vui lòng dán mã khóa Gemini API Key cá nhân (bắt đầu bằng ${KEY_PREFIX}...) vào ô bên dưới.`);
       return;
     }
     if (trimmed.length < 20) {
@@ -33,7 +124,7 @@ export default function ApiKeyModal({
       return;
     }
     setError('');
-    setUserGeminiKey(trimmed);
+    setUserGeminiKey(trimmed, role, accountId);
     onSaved(trimmed);
   };
 
@@ -54,7 +145,9 @@ export default function ApiKeyModal({
                 Cấu hình Google Gemini API Key
               </h2>
               <p className="text-xs sm:text-sm text-slate-500">
-                Kích hoạt tính năng Sinh đề AI cá nhân hóa & Chấm tự luận AI Vision
+                {role === 'student'
+                  ? 'Học sinh dùng API Key từ tài khoản Google của riêng em (không dùng chung API của giáo viên)'
+                  : 'Kích hoạt tính năng Sinh đề AI cá nhân hóa & Chấm tự luận AI Vision'}
               </p>
             </div>
           </div>
@@ -68,80 +161,7 @@ export default function ApiKeyModal({
           </button>
         </div>
 
-        <div className="rounded-2xl bg-slate-50 border border-slate-200/80 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 font-extrabold text-xs sm:text-sm text-slate-800 uppercase tracking-wide">
-              <span>🧭</span>
-              <span>HƯỚNG DẪN LẤY API KEY MIỄN PHÍ (4 BƯỚC ĐƠN GIẢN)</span>
-            </div>
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
-              Miễn phí 100%
-            </span>
-          </div>
-
-          <div className="space-y-2.5 text-sm">
-            <div className="bg-white rounded-xl border border-slate-200/80 p-3 flex items-start gap-3">
-              <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                1
-              </span>
-              <div className="space-y-2">
-                <p className="font-bold text-slate-800">Bấm vào liên kết mở nhanh Google AI Studio:</p>
-                <a
-                  href="https://aistudio.google.com/apikey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm shadow-sm no-underline"
-                >
-                  <span>🔗 Mở trang Google AI Studio</span>
-                  <span>↗</span>
-                </a>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200/80 p-3 flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                2
-              </span>
-              <p className="font-bold text-slate-800">
-                Đăng nhập bằng tài khoản Google (Gmail) cá nhân của {pronoun}.
-              </p>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200/80 p-3 flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                3
-              </span>
-              <p className="text-slate-800 leading-relaxed">
-                Bấm nút{' '}
-                <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
-                  &quot;Create API key&quot;
-                </span>{' '}
-                ➔ Chọn{' '}
-                <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
-                  &quot;Create API key in new project&quot;
-                </span>
-                .
-              </p>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200/80 p-3 flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                4
-              </span>
-              <p className="text-slate-800 leading-relaxed">
-                Sao chép (Copy) dãy mã khóa và quay lại dán vào ô nhập bên dưới ➔ Bấm{' '}
-                <span className="font-bold text-violet-700">&quot;Xác nhận &amp; Lưu&quot;</span>.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex items-center gap-2.5 text-xs sm:text-sm text-amber-900">
-            <span className="text-base">💡</span>
-            <p>
-              <b>Lưu ý:</b> Chỉ cần làm 1 lần duy nhất trên thiết bị này. Khóa hoàn toàn miễn phí và bảo mật.
-            </p>
-          </div>
-        </div>
+        <ApiKeyStepsGuide role={role} />
 
         <form onSubmit={handleSave} className="space-y-3">
           <div>
@@ -149,9 +169,7 @@ export default function ApiKeyModal({
               <label htmlFor="gemini-api-key-input" className="font-bold text-sm text-slate-900">
                 Dán Gemini API Key của {pronoun} vào đây:
               </label>
-              <span className="text-xs font-bold text-violet-700">
-                (Bắt đầu bằng {KEY_PREFIX}...)
-              </span>
+              <span className="text-xs font-bold text-violet-700">(Bắt đầu bằng {KEY_PREFIX}...)</span>
             </div>
             <input
               id="gemini-api-key-input"
@@ -171,7 +189,7 @@ export default function ApiKeyModal({
           )}
 
           <p className="text-xs text-slate-500">
-            Mã khóa được lưu trữ an toàn trực tiếp trên trình duyệt của {pronoun} (localStorage) và chỉ dùng để kết nối Gemini AI.
+            Mã khóa được lưu trữ riêng biệt theo tài khoản của {pronoun} trên trình duyệt (localStorage) và gọi trực tiếp từ tài khoản Google của {pronoun}.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2 pt-1">
@@ -181,11 +199,11 @@ export default function ApiKeyModal({
             >
               Xác nhận &amp; Lưu
             </button>
-            {getUserGeminiKey() && (
+            {getUserGeminiKey(role, accountId) && (
               <button
                 type="button"
                 onClick={() => {
-                  setUserGeminiKey('');
+                  setUserGeminiKey('', role, accountId);
                   setValue('');
                   onSaved('');
                 }}

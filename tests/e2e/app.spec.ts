@@ -36,6 +36,9 @@ test('real app: landing, student login validation and honest missing-server erro
   await expect(page.getByText('50,000+')).toHaveCount(0);
   await page.getByRole('button', { name: 'Đăng nhập học sinh', exact: true }).first().click();
   await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByLabel(/Gemini API Key cá nhân của em/)).toBeVisible();
+  await page.getByRole('button', { name: /Hướng dẫn học sinh lấy API Key miễn phí/ }).click();
+  await expect(page.getByText('HƯỚNG DẪN LẤY API KEY MIỄN PHÍ (4 BƯỚC ĐƠN GIẢN)')).toBeVisible();
   await page.getByLabel('Mã học sinh', { exact: true }).fill('HS-TEST');
   await page.getByLabel('Mật khẩu', { exact: true }).fill('not-a-real-password');
   await page.getByRole('dialog').getByRole('button', { name: /^Đăng nhập/ }).click();

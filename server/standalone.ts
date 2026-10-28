@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cookie, cookies, HttpError } from './http.ts';
 import { ensureNodeIds, validateDocument } from '../shared/document.ts';
@@ -149,6 +149,9 @@ const studentIndex: Map<string, string> = (globalThis as any).__cvStudentIndex |
 
 const hashPassword = (pw: string) => createHash('sha256').update(`cv-pw:${pw}`).digest('hex');
 
+export const generateStudentPassword = (studentCode: string): string =>
+  createHmac('sha256', getSigningSecret()).update(`stu-pw:${studentCode.trim().toUpperCase()}`).digest('base64url').slice(0, 8);
+
 export function getOrCreateTeacherTenant(userId: string, name: string, school = ''): StandaloneTenantData {
   let tenant = globalStore.get(userId);
   if (!tenant) {
@@ -189,29 +192,69 @@ export function getStandaloneSessionFromReq(req: IncomingMessage): StandaloneTok
 export function standaloneStudentLogin(identifier: string, password: string): { token: string; payload: StandaloneTokenPayload } {
   const code = identifier.trim().toUpperCase();
   const teacherId = studentIndex.get(code);
-  if (!teacherId) {
-    throw new HttpError(401, 'LOGIN_FAILED', 'Mã học sinh hoặc mật khẩu không đúng.');
+  if (teacherId) {
+    const tenant = globalStore.get(teacherId);
+    const stu = tenant?.students.find(s => s.student_code === code);
+    if (!stu || stu.password_hash !== hashPassword(password)) {
+      throw new HttpError(401, 'LOGIN_FAILED', 'Mã học sinh hoặc mật khẩu không đúng.');
+    }
+    const payload: Omit<StandaloneTokenPayload, 'iat' | 'exp'> = {
+      sub: stu.user_id,
+      role: 'student',
+      email: stu.auth_email,
+      name: stu.data.name,
+      school: tenant?.profile.school || '',
+      studentCode: stu.student_code,
+      classId: stu.class_id,
+      teacherId,
+      forcedPasswordChange: Boolean(stu.forced_password_change),
+    };
+    return {
+      token: signStandaloneSession(payload),
+      payload: { ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 604800 },
+    };
   }
-  const tenant = globalStore.get(teacherId);
-  const stu = tenant?.students.find(s => s.student_code === code);
-  if (!stu || stu.password_hash !== hashPassword(password)) {
-    throw new HttpError(401, 'LOGIN_FAILED', 'Mã học sinh hoặc mật khẩu không đúng.');
+
+  // Stateless serverless verification across cold starts: verify deterministic HMAC password for studentCode
+  const expectedPassword = generateStudentPassword(code);
+  if (code.length >= 3 && password === expectedPassword) {
+    const studentId = deterministicUuid('student-code', code);
+    const defaultTeacherId = deterministicUuid('teacher-default', 'standalone');
+    const tenant = getOrCreateTeacherTenant(defaultTeacherId, 'Giáo viên');
+    let stu = tenant.students.find(s => s.student_code === code);
+    if (!stu) {
+      const classId = tenant.classes[0]?.id || deterministicUuid('class-default', code.split('-')[0] || '12A1');
+      stu = {
+        user_id: studentId,
+        student_code: code,
+        auth_email: `${studentId}@students.invalid`,
+        password_hash: hashPassword(expectedPassword),
+        teacher_id: defaultTeacherId,
+        class_id: classId,
+        data: { name: `Học sinh (${code})`, status: 'not_started', gapsCount: 0, testHistory: [], assignedTasks: [] },
+        forced_password_change: false,
+      };
+      tenant.students.push(stu);
+      studentIndex.set(code, defaultTeacherId);
+    }
+    const payload: Omit<StandaloneTokenPayload, 'iat' | 'exp'> = {
+      sub: stu.user_id,
+      role: 'student',
+      email: stu.auth_email,
+      name: stu.data.name,
+      school: tenant.profile.school || '',
+      studentCode: stu.student_code,
+      classId: stu.class_id,
+      teacherId: defaultTeacherId,
+      forcedPasswordChange: false,
+    };
+    return {
+      token: signStandaloneSession(payload),
+      payload: { ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 604800 },
+    };
   }
-  const payload: Omit<StandaloneTokenPayload, 'iat' | 'exp'> = {
-    sub: stu.user_id,
-    role: 'student',
-    email: stu.auth_email,
-    name: stu.data.name,
-    school: tenant?.profile.school || '',
-    studentCode: stu.student_code,
-    classId: stu.class_id,
-    teacherId,
-    forcedPasswordChange: Boolean(stu.forced_password_change),
-  };
-  return {
-    token: signStandaloneSession(payload),
-    payload: { ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 604800 },
-  };
+
+  throw new HttpError(401, 'LOGIN_FAILED', 'Mã học sinh hoặc mật khẩu không đúng.');
 }
 
 export function standaloneChangeStudentPassword(
@@ -245,8 +288,8 @@ export function standaloneCreateStudent(
   if (!ownedClass) throw new HttpError(403, 'FORBIDDEN', 'Lớp không thuộc quyền quản lý.');
   if (studentIndex.has(code)) throw new HttpError(409, 'CONFLICT', 'Mã học sinh đã tồn tại.');
 
-  const studentId = crypto.randomUUID();
-  const temporaryPassword = randomBytes(6).toString('base64url');
+  const studentId = deterministicUuid('student-code', code);
+  const temporaryPassword = generateStudentPassword(code);
   tenant.students.push({
     user_id: studentId,
     student_code: code,
@@ -310,8 +353,8 @@ export function standaloneCreateStudentsBulk(
       }
     }
 
-    const studentId = crypto.randomUUID();
-    const temporaryPassword = randomBytes(6).toString('base64url');
+    const studentId = deterministicUuid('student-code', code);
+    const temporaryPassword = generateStudentPassword(code);
     tenant.students.push({
       user_id: studentId,
       student_code: code,
@@ -333,9 +376,9 @@ export function standaloneResetStudentPassword(teacherId: string, studentId: str
   const tenant = getOrCreateTeacherTenant(teacherId, 'Giáo viên');
   const stu = tenant.students.find(s => s.user_id === studentId);
   if (!stu) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy học sinh.');
-  const temporaryPassword = randomBytes(12).toString('base64url');
+  const temporaryPassword = generateStudentPassword(stu.student_code);
   stu.password_hash = hashPassword(temporaryPassword);
-  stu.forced_password_change = true;
+  stu.forced_password_change = false;
   return { temporaryPassword };
 }
 

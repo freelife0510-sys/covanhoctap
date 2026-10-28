@@ -1,8 +1,8 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
-import { api, ApiError, getUserGeminiKey, post } from './services/apiClient.ts';
+import { api, ApiError, getUserGeminiKey, post, setActiveClientIdentity, setUserGeminiKey } from './services/apiClient.ts';
 import type { AIConnection, Session } from './features.ts';
 import LandingPage from './components/LandingPage.tsx';
-import ApiKeyModal from './components/ApiKeyModal.tsx';
+import ApiKeyModal, { ApiKeyStepsGuide, KEY_PREFIX } from './components/ApiKeyModal.tsx';
 
 const TeacherWorkspace = lazy(() => import('./components/TeacherWorkspace.tsx'));
 const LearnerWorkspace = lazy(() => import('./components/LearnerWorkspace.tsx'));
@@ -62,10 +62,14 @@ export default function App() {
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(() => Boolean(getUserGeminiKey()));
   const [apiKeyVersion, setApiKeyVersion] = useState(0);
+  const [studentLoginKey, setStudentLoginKey] = useState(() => getUserGeminiKey('student'));
+  const [showStudentKeyGuide, setShowStudentKeyGuide] = useState(false);
   const [busy, setBusy] = useState(false);
   const [home, setHome] = useState(true);
   const [ai, setAi] = useState<AIConnection | null>(null);
   const [loginStep, setLoginStep] = useState('');
+
+  const currentAccountId = session?.student?.student_code || session?.profile.user_id || '';
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -96,6 +100,9 @@ export default function App() {
     }
     api<Session>('/session')
       .then(s => {
+        const acctId = s.student?.student_code || s.profile.user_id;
+        setActiveClientIdentity(s.profile.role, acctId);
+        setHasApiKey(Boolean(getUserGeminiKey(s.profile.role, acctId)));
         setSession(s);
         setHome(false);
       })
@@ -143,11 +150,15 @@ export default function App() {
       } catch {
         // ignore storage error
       }
-      setSession(await api('/session'));
+      const s = await api<Session>('/session');
+      setActiveClientIdentity('teacher', s.profile.user_id);
+      const teacherHasKey = Boolean(getUserGeminiKey('teacher', s.profile.user_id));
+      setHasApiKey(teacherHasKey);
+      setSession(s);
       setTeacherGoogleOpen(false);
       setShowOtherAccountForm(false);
       setHome(false);
-      if (!getUserGeminiKey()) {
+      if (!teacherHasKey) {
         setApiKeyModalOpen(true);
       }
     });
@@ -179,19 +190,33 @@ export default function App() {
   const studentLogin = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
+    const identifier = String(data.get('identifier') || '').trim().toUpperCase();
+    const enteredKey = String(data.get('studentApiKey') || studentLoginKey || '').trim();
     void run(async () => {
-      setLoginStep('Đang xác minh tài khoản & kết nối Cố vấn AI…');
+      setLoginStep('Đang xác minh tài khoản & kết nối Cố vấn AI bằng API Key cá nhân của học sinh…');
       try {
+        setActiveClientIdentity('student', identifier);
+        if (enteredKey.length >= 20) {
+          setUserGeminiKey(enteredKey, 'student', identifier);
+        }
         const result = await post<{ success: boolean; ai: AIConnection | null }>('/auth/student-login', {
-          identifier: String(data.get('identifier') || '').trim(),
+          identifier,
           password: data.get('password'),
         });
         setAi(result.ai);
         setLoginStep('Đang mở không gian học tập…');
-        setSession(await api('/session'));
+        const s = await api<Session>('/session');
+        const acctId = s.student?.student_code || identifier || s.profile.user_id;
+        setActiveClientIdentity('student', acctId);
+        if (enteredKey.length >= 20) {
+          setUserGeminiKey(enteredKey, 'student', acctId);
+        }
+        const stuHasKey = Boolean(getUserGeminiKey('student', acctId));
+        setHasApiKey(stuHasKey);
+        setSession(s);
         setLogin(false);
         setHome(false);
-        if (!getUserGeminiKey()) {
+        if (!stuHasKey) {
           setApiKeyModalOpen(true);
         }
       } finally {
@@ -206,6 +231,7 @@ export default function App() {
     try {
       await post('/logout', {}).catch(() => null);
     } finally {
+      setActiveClientIdentity(null);
       setSession(null);
       setAi(null);
       setProfileOpen(false);
@@ -326,9 +352,11 @@ export default function App() {
       <ApiKeyModal
         open={apiKeyModalOpen}
         role={session?.profile.role || 'student'}
+        accountId={currentAccountId}
         onClose={() => setApiKeyModalOpen(false)}
         onSaved={key => {
           setHasApiKey(Boolean(key));
+          setStudentLoginKey(key);
           setApiKeyVersion(v => v + 1);
           setApiKeyModalOpen(false);
         }}
@@ -517,25 +545,66 @@ export default function App() {
 
       {login && (
         <div className="modal no-print">
-          <section role="dialog" aria-modal="true" aria-labelledby="login-title" className="panel max-w-md w-full">
-            <h2 id="login-title">Đăng nhập học sinh</h2>
-            <form onSubmit={studentLogin} className="space-y-4">
-              <label>
-                Mã học sinh
-                <input autoFocus required name="identifier" autoComplete="username" maxLength={40} />
-              </label>
-              <label>
-                Mật khẩu
-                <input required name="password" type="password" autoComplete="current-password" maxLength={128} />
-              </label>
-              <button disabled={busy} className="button">
-                {busy ? 'Đang đăng nhập…' : 'Đăng nhập & kết nối AI'}
-              </button>{' '}
-              <button type="button" disabled={busy} onClick={() => setLogin(false)}>
-                Đóng
-              </button>
-              <p role="status" aria-live="polite" className="text-sm text-emerald-700">
-                {loginStep || 'Khi đăng nhập, hệ thống gọi Gemini API ngay trên máy chủ để Cố vấn AI sẵn sàng hỗ trợ tức thì.'}
+          <section role="dialog" aria-modal="true" aria-labelledby="login-title" className="panel max-w-lg w-full max-h-[92vh] overflow-y-auto space-y-4">
+            <div className="border-b pb-3">
+              <h2 id="login-title" className="text-lg font-extrabold">
+                Đăng nhập học sinh &amp; Cấu hình API Key cá nhân
+              </h2>
+              <p className="text-xs text-slate-600">
+                Học sinh đăng nhập bằng tài khoản do giáo viên cấp và sử dụng <b>Gemini API Key từ tài khoản Google (Gmail) cá nhân của riêng em</b> (không gọi API chung của giáo viên).
+              </p>
+            </div>
+            <form onSubmit={studentLogin} className="space-y-3.5">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label>
+                  Mã học sinh
+                  <input autoFocus required name="identifier" placeholder="Ví dụ: 12A1-001" autoComplete="username" maxLength={40} />
+                </label>
+                <label>
+                  Mật khẩu
+                  <input required name="password" type="password" placeholder="Mật khẩu giáo viên cấp" autoComplete="current-password" maxLength={128} />
+                </label>
+              </div>
+
+              <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label htmlFor="student-login-api-key" className="font-bold text-sm text-slate-900">
+                    🔑 Gemini API Key cá nhân của em (Tài khoản Google của học sinh)
+                  </label>
+                  <button
+                    type="button"
+                    className="text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-full"
+                    onClick={() => setShowStudentKeyGuide(v => !v)}
+                  >
+                    {showStudentKeyGuide ? '▲ Ẩn hướng dẫn lấy API Key' : '🧭 Hướng dẫn học sinh lấy API Key miễn phí'}
+                  </button>
+                </div>
+                <input
+                  id="student-login-api-key"
+                  name="studentApiKey"
+                  type="text"
+                  value={studentLoginKey}
+                  onChange={e => setStudentLoginKey(e.target.value)}
+                  placeholder={`Dán mã khóa ${KEY_PREFIX}... từ Google AI Studio của em vào đây`}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-sm"
+                  autoComplete="off"
+                />
+                <p className="text-xs text-slate-600">
+                  Mỗi học sinh tự lấy 1 mã khóa miễn phí trên Google AI Studio bằng Gmail của mình để gọi AI riêng biệt, không dùng chung hạn mức API của giáo viên.
+                </p>
+                {showStudentKeyGuide && <ApiKeyStepsGuide role="student" compact />}
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button disabled={busy} className="button">
+                  {busy ? 'Đang đăng nhập…' : 'Đăng nhập & kết nối AI cá nhân'}
+                </button>
+                <button type="button" disabled={busy} onClick={() => setLogin(false)}>
+                  Đóng
+                </button>
+              </div>
+              <p role="status" aria-live="polite" className="text-xs text-emerald-700">
+                {loginStep || 'Nếu chưa dán API Key ở bước này, ngay sau khi đăng nhập hệ thống sẽ mở bảng hướng dẫn 4 bước để em lấy và lưu khóa cá nhân.'}
               </p>
             </form>
           </section>

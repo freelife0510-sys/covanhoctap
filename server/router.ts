@@ -222,7 +222,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if ((path === '/api/student-login' || path === '/api/auth/student-login') && method === 'POST') {
       const input = loginSchema.parse(await body(req));
-      const aiCheck = checkAIConnection(false, userGeminiKey).catch(() => null);
+      const aiCheck = userGeminiKey
+        ? checkAIConnection(false, userGeminiKey).catch(() => null)
+        : Promise.resolve({
+            available: false,
+            ready: false,
+            model: null,
+            code: 'STUDENT_KEY_REQUIRED',
+            message: 'Em cần cấu hình Gemini API Key cá nhân (lấy từ tài khoản Google của riêng em — không dùng chung API của giáo viên).',
+            checkedAt: new Date().toISOString(),
+          });
       if (!isSupabaseConfigured()) {
         try {
           const { token } = standaloneStudentLogin(input.identifier, input.password);
@@ -275,7 +284,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           password
         );
         setStandaloneCookie(res, changed.token);
-        send(res, 200, { success: true, relogged: true, ai: await checkAIConnection(false, userGeminiKey).catch(() => null) });
+        send(res, 200, { success: true, relogged: true, ai: userGeminiKey ? await checkAIConnection(false, userGeminiKey).catch(() => null) : null });
         return;
       }
       const admin = supabase(undefined, true);
@@ -290,7 +299,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         const relogin = await supabase().auth.signInWithPassword({ email, password });
         if (relogin.data.session) {
           setSession(res, relogin.data.session);
-          send(res, 200, { success: true, relogged: true, ai: await checkAIConnection(false, userGeminiKey).catch(() => null) });
+          send(res, 200, { success: true, relogged: true, ai: userGeminiKey ? await checkAIConnection(false, userGeminiKey).catch(() => null) : null });
           return;
         }
       }
@@ -318,7 +327,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
               class_id: stuRow.class_id,
               data: stuRow.data,
             }
-          : null;
+          : role === 'student'
+            ? {
+                user_id: id,
+                student_code: identity.studentCode || 'HS',
+                teacher_id: identity.teacherId || standaloneTenant.profile.user_id,
+                class_id: identity.classId || '',
+                data: { name: identity.name, status: 'not_started', gapsCount: 0, testHistory: [], assignedTasks: [] },
+              }
+            : null;
         send(res, 200, { profile, student });
         return;
       }
@@ -332,6 +349,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (identity.forcedPasswordChange) throw new HttpError(403, 'PASSWORD_CHANGE_REQUIRED', 'Vui lòng đổi mật khẩu được cấp trước khi tiếp tục.');
     if ((path === '/api/ai-status' || path === '/api/ai/status') && method === 'GET') {
+      if (role === 'student' && !userGeminiKey) {
+        send(res, 200, {
+          available: false,
+          ready: false,
+          model: null,
+          code: 'STUDENT_KEY_REQUIRED',
+          message: 'Em cần cấu hình Gemini API Key cá nhân (lấy từ tài khoản Google của riêng em — không dùng chung API của giáo viên).',
+          checkedAt: new Date().toISOString(),
+        });
+        return;
+      }
       send(res, 200, await checkAIConnection(url.searchParams.get('force') === '1', userGeminiKey));
       return;
     }
@@ -583,6 +611,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/ai/chat' && method === 'POST') {
       const input = chatRequestSchema.parse(await body(req));
+      if (role === 'student' && !userGeminiKey) {
+        throw new HttpError(
+          403,
+          'STUDENT_KEY_REQUIRED',
+          'Em cần cấu hình Gemini API Key cá nhân (lấy từ tài khoản Google của riêng em) để sử dụng AI. Hệ thống không gọi API chung của giáo viên.'
+        );
+      }
       if (standaloneTenant) {
         if (!userGeminiKey) {
           required('GEMINI_API_KEY');
@@ -732,6 +767,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/ai/exercises' && method === 'POST') {
       const input = aiExerciseRequestSchema.parse(await body(req));
+      if (role === 'student' && !userGeminiKey) {
+        throw new HttpError(
+          403,
+          'STUDENT_KEY_REQUIRED',
+          'Em cần cấu hình Gemini API Key cá nhân (lấy từ tài khoản Google của riêng em) để sử dụng AI. Hệ thống không gọi API chung của giáo viên.'
+        );
+      }
       const { lessons, questionHash } = await import('./study.ts');
       const lesson = lessons.find(l => l.id === input.lessonId);
       if (!lesson) throw new HttpError(404, 'LESSON_NOT_FOUND', 'Không tìm thấy bài học.');
@@ -833,6 +875,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/ai/document-patch' && method === 'POST') {
       const input = aiDocumentPatchRequestSchema.parse(await body(req));
+      if (role === 'student' && !userGeminiKey) {
+        throw new HttpError(
+          403,
+          'STUDENT_KEY_REQUIRED',
+          'Em cần cấu hình Gemini API Key cá nhân (lấy từ tài khoản Google của riêng em) để sử dụng AI. Hệ thống không gọi API chung của giáo viên.'
+        );
+      }
       const doc = standaloneTenant
         ? standaloneTenant.documents.find(d => d.id === input.documentId && d.owner_id === id)
         : checked(await db.from('documents').select('*').eq('id', input.documentId).eq('owner_id', id).maybeSingle());

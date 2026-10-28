@@ -96,7 +96,7 @@ test('real HTTP router: health, fail-closed session, CSRF, body limits, and 1-cl
     assert.equal(bulkData.created[0].studentCode, '12A1-001');
     assert.equal(bulkData.created[1].studentCode, '12A1-BINH');
 
-    // Student can log in with the generated credentials
+    // Student can log in with the generated credentials and is required to provide their own personal API key (not teacher's)
     const stuLogin = await fetch(`${base}/api/auth/student-login`, {
       method: 'POST',
       headers: { Origin: base, 'Content-Type': 'application/json' },
@@ -106,6 +106,15 @@ test('real HTTP router: health, fail-closed session, CSRF, body limits, and 1-cl
       }),
     });
     assert.equal(stuLogin.status, 200);
+    const stuJson = await stuLogin.json();
+    assert.equal(stuJson.ai.code, 'STUDENT_KEY_REQUIRED');
+    const stuCookie = (stuLogin.headers.get('set-cookie') || '').split(',')[0].split(';')[0];
+
+    const stuAiStatus = await fetch(`${base}/api/ai/status`, {
+      headers: { Cookie: stuCookie },
+    });
+    assert.equal(stuAiStatus.status, 200);
+    assert.equal((await stuAiStatus.json()).code, 'STUDENT_KEY_REQUIRED');
 
     // Logout clears session cookie and succeeds even without Supabase
     const logoutRes = await fetch(`${base}/api/logout`, {

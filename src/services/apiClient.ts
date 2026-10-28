@@ -1,20 +1,68 @@
-export const USER_GEMINI_KEY_STORAGE = 'user_gemini_api_key';
+export const TEACHER_GEMINI_KEY_STORAGE = 'teacher_gemini_api_key';
+export const STUDENT_GEMINI_KEY_STORAGE = 'student_gemini_api_key';
+const ACTIVE_ROLE_STORAGE = 'active_math_role';
+const ACTIVE_ACCOUNT_ID_STORAGE = 'active_math_account_id';
 
-export function getUserGeminiKey(): string {
+export function setActiveClientIdentity(role: 'teacher' | 'student' | null, accountId?: string): void {
   try {
-    return (localStorage.getItem(USER_GEMINI_KEY_STORAGE) || '').trim();
+    if (!role) {
+      localStorage.removeItem(ACTIVE_ROLE_STORAGE);
+      localStorage.removeItem(ACTIVE_ACCOUNT_ID_STORAGE);
+      return;
+    }
+    localStorage.setItem(ACTIVE_ROLE_STORAGE, role);
+    if (accountId) {
+      localStorage.setItem(ACTIVE_ACCOUNT_ID_STORAGE, accountId.trim().toLowerCase());
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function getUserGeminiKey(roleOverride?: 'teacher' | 'student', accountIdOverride?: string): string {
+  try {
+    const role = roleOverride || (localStorage.getItem(ACTIVE_ROLE_STORAGE) as 'teacher' | 'student' | null) || 'student';
+    const accountId = (accountIdOverride || localStorage.getItem(ACTIVE_ACCOUNT_ID_STORAGE) || '').trim().toLowerCase();
+
+    if (role === 'student') {
+      if (accountId) {
+        const scoped = localStorage.getItem(`${STUDENT_GEMINI_KEY_STORAGE}:${accountId}`);
+        if (scoped?.trim()) return scoped.trim();
+      }
+      return (localStorage.getItem(STUDENT_GEMINI_KEY_STORAGE) || '').trim();
+    }
+
+    if (accountId) {
+      const scoped = localStorage.getItem(`${TEACHER_GEMINI_KEY_STORAGE}:${accountId}`);
+      if (scoped?.trim()) return scoped.trim();
+    }
+    return (
+      localStorage.getItem(TEACHER_GEMINI_KEY_STORAGE) ||
+      localStorage.getItem('user_gemini_api_key') ||
+      ''
+    ).trim();
   } catch {
     return '';
   }
 }
 
-export function setUserGeminiKey(key: string): void {
+export function setUserGeminiKey(key: string, roleOverride?: 'teacher' | 'student', accountIdOverride?: string): void {
   try {
+    const role = roleOverride || (localStorage.getItem(ACTIVE_ROLE_STORAGE) as 'teacher' | 'student' | null) || 'student';
+    const accountId = (accountIdOverride || localStorage.getItem(ACTIVE_ACCOUNT_ID_STORAGE) || '').trim().toLowerCase();
     const trimmed = key.trim();
+    const baseKey = role === 'student' ? STUDENT_GEMINI_KEY_STORAGE : TEACHER_GEMINI_KEY_STORAGE;
+
     if (trimmed) {
-      localStorage.setItem(USER_GEMINI_KEY_STORAGE, trimmed);
+      localStorage.setItem(baseKey, trimmed);
+      if (accountId) {
+        localStorage.setItem(`${baseKey}:${accountId}`, trimmed);
+      }
     } else {
-      localStorage.removeItem(USER_GEMINI_KEY_STORAGE);
+      localStorage.removeItem(baseKey);
+      if (accountId) {
+        localStorage.removeItem(`${baseKey}:${accountId}`);
+      }
     }
   } catch {
     // ignore storage errors
