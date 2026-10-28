@@ -23,12 +23,6 @@ interface SavedGoogleTeacher {
   lastLogin?: string;
 }
 
-const DEFAULT_SAVED_TEACHER: SavedGoogleTeacher = {
-  email: 'freelife0510@gmail.com',
-  name: 'Thầy Hồ Sỹ Long',
-  avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=freelife0510&gender=male',
-};
-
 function loadSavedGoogleTeachers(): SavedGoogleTeacher[] {
   try {
     const raw = localStorage.getItem('math_saved_teacher_accounts');
@@ -50,7 +44,7 @@ function loadSavedGoogleTeachers(): SavedGoogleTeacher[] {
   } catch {
     // ignore storage error
   }
-  return [DEFAULT_SAVED_TEACHER];
+  return [];
 }
 
 export default function App() {
@@ -78,6 +72,9 @@ export default function App() {
       params.delete('auth_error');
     }
     if (googlePicker) {
+      const loaded = loadSavedGoogleTeachers();
+      setSavedTeachers(loaded);
+      setShowOtherAccountForm(loaded.length === 0);
       setTeacherGoogleOpen(true);
       params.delete('google_picker');
     }
@@ -99,7 +96,9 @@ export default function App() {
         setHome(false);
       })
       .catch(e => {
-        if (!(e instanceof ApiError) || e.status !== 401) setError(e.message);
+        if (!(e instanceof ApiError) || (e.status !== 401 && e.code !== 'SETUP_REQUIRED')) {
+          setError(e.message);
+        }
       })
       .finally(() => setChecking(false));
   }, []);
@@ -127,7 +126,7 @@ export default function App() {
     const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}&gender=male`;
 
     void run(async () => {
-      await post('/auth/teacher-google', { email: cleanEmail, name: displayName });
+      await post('/teacher-google', { email: cleanEmail, name: displayName });
       try {
         localStorage.setItem('google_teacher_email', cleanEmail);
         localStorage.setItem('google_teacher_name', displayName);
@@ -147,9 +146,25 @@ export default function App() {
     });
   };
 
+  const removeSavedTeacher = (emailToRemove: string) => {
+    const updated = savedTeachers.filter(a => a.email.toLowerCase() !== emailToRemove.toLowerCase());
+    setSavedTeachers(updated);
+    if (updated.length === 0) setShowOtherAccountForm(true);
+    try {
+      localStorage.setItem('math_saved_teacher_accounts', JSON.stringify(updated));
+      if (localStorage.getItem('google_teacher_email')?.toLowerCase() === emailToRemove.toLowerCase()) {
+        localStorage.removeItem('google_teacher_email');
+        localStorage.removeItem('google_teacher_name');
+      }
+    } catch {
+      // ignore storage error
+    }
+  };
+
   const openTeacherGooglePicker = () => {
-    setSavedTeachers(loadSavedGoogleTeachers());
-    setShowOtherAccountForm(false);
+    const loaded = loadSavedGoogleTeachers();
+    setSavedTeachers(loaded);
+    setShowOtherAccountForm(loaded.length === 0);
     setError('');
     setTeacherGoogleOpen(true);
   };
@@ -344,13 +359,16 @@ export default function App() {
                 </svg>
               </div>
               <h2 id="google-login-title" className="text-lg font-bold">
-                Chọn tài khoản Google để tiếp tục
+                Đăng nhập bằng Google (Giáo viên)
               </h2>
-              <p className="text-xs text-slate-500">Bấm Tiếp tục trên tài khoản Gmail của Thầy/Cô để vào ngay Cố Vấn Học Tập</p>
+              <p className="text-xs text-slate-500">
+                Mỗi giáo viên đăng nhập bằng Gmail cá nhân sẽ có không gian quản lý lớp học và học sinh độc lập trên trình duyệt của mình
+              </p>
             </div>
 
-            {!showOtherAccountForm ? (
+            {savedTeachers.length > 0 && !showOtherAccountForm ? (
               <div className="space-y-3">
+                <p className="text-xs font-semibold text-slate-600">Tài khoản Google trên trình duyệt này:</p>
                 <div className="divide-y rounded-xl border bg-slate-50 overflow-hidden">
                   {savedTeachers.map(acc => (
                     <div key={acc.email} className="p-3 flex items-center justify-between gap-3 bg-white hover:bg-emerald-50/40">
@@ -358,14 +376,25 @@ export default function App() {
                         <div className="font-bold text-sm truncate">{acc.name}</div>
                         <div className="text-xs text-slate-500 font-mono truncate">{acc.email}</div>
                       </div>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        className="button shrink-0"
-                        onClick={() => handleTeacherGoogleContinue(acc.email, acc.name)}
-                      >
-                        {busy ? 'Đang vào…' : 'Tiếp tục'}
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          className="button"
+                          onClick={() => handleTeacherGoogleContinue(acc.email, acc.name)}
+                        >
+                          {busy ? 'Đang vào…' : 'Tiếp tục'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          className="text-xs text-slate-500 hover:text-rose-600"
+                          title="Gỡ tài khoản này khỏi trình duyệt"
+                          onClick={() => removeSavedTeacher(acc.email)}
+                        >
+                          Gỡ
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -376,7 +405,7 @@ export default function App() {
                   className="w-full text-sm py-2.5 px-4 rounded-xl border hover:bg-slate-50 font-semibold"
                   onClick={() => setShowOtherAccountForm(true)}
                 >
-                  + Sử dụng một tài khoản Google (Gmail) khác
+                  + Đăng nhập bằng tài khoản Gmail khác
                 </button>
               </div>
             ) : (
@@ -393,8 +422,10 @@ export default function App() {
                   <input
                     autoFocus
                     required
-                    type="text"
-                    placeholder="vidu@gmail.com"
+                    type="email"
+                    name="email"
+                    autoComplete="email"
+                    placeholder="Nhập địa chỉ Gmail của Thầy/Cô (ví dụ: giaovien@gmail.com)"
                     value={teacherEmail}
                     onChange={e => setTeacherEmail(e.target.value)}
                     maxLength={120}
@@ -404,7 +435,9 @@ export default function App() {
                   Họ và tên hiển thị (tùy chọn)
                   <input
                     type="text"
-                    placeholder="Thầy Hồ Sỹ Long"
+                    name="name"
+                    autoComplete="name"
+                    placeholder="Nhập họ tên Thầy/Cô"
                     value={teacherName}
                     onChange={e => setTeacherName(e.target.value)}
                     maxLength={100}
@@ -412,11 +445,13 @@ export default function App() {
                 </label>
                 <div className="flex flex-wrap gap-2">
                   <button type="submit" disabled={busy} className="button">
-                    {busy ? 'Đang đăng nhập…' : 'Tiếp tục với Gmail này'}
+                    {busy ? 'Đang đăng nhập…' : 'Tiếp tục'}
                   </button>
-                  <button type="button" disabled={busy} onClick={() => setShowOtherAccountForm(false)}>
-                    Quay lại danh sách
-                  </button>
+                  {savedTeachers.length > 0 && (
+                    <button type="button" disabled={busy} onClick={() => setShowOtherAccountForm(false)}>
+                      Quay lại tài khoản đã lưu
+                    </button>
+                  )}
                 </div>
               </form>
             )}

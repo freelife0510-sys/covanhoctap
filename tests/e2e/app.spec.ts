@@ -44,13 +44,15 @@ test('real app: landing, student login validation and honest missing-server erro
   expect(errors).toEqual([]);
 });
 
-test('real app: 1-click teacher Google continue logs in immediately without requiring OAuth Client ID', async ({ page }) => {
+test('real app: teacher Google login has no hardcoded email and logs in immediately with teacher own Gmail', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Đăng nhập bằng Google (Giáo viên)' }).first().click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByText('freelife0510@gmail.com')).toBeVisible();
-  await page.getByRole('dialog').getByRole('button', { name: 'Tiếp tục', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: /Quản lý lớp · Thầy Hồ Sỹ Long/ })).toBeVisible();
+  await expect(page.getByText('freelife0510@gmail.com')).toHaveCount(0);
+  await page.getByLabel('Địa chỉ Gmail của Thầy/Cô').fill('giaovien.toan@gmail.com');
+  await page.getByLabel('Họ và tên hiển thị (tùy chọn)').fill('Cô Nguyễn Thị Lan');
+  await page.getByRole('dialog').getByRole('button', { name: 'Tiếp tục', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Quản lý lớp · Cô Nguyễn Thị Lan/ })).toBeVisible();
 });
 
 test('UI contract mock: empty teacher workspace has no seeded students or plaintext passwords', async ({ page }) => {

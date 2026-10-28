@@ -51,7 +51,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       send(res, 200, { status: 'ok' });
       return;
     }
-    if (path === '/api/auth/teacher-google' && method === 'POST') {
+    if ((path === '/api/teacher-google' || path === '/api/auth/teacher-google') && method === 'POST') {
       const input = teacherGoogleQuickSchema.parse(await body(req));
       let verifiedEmail = input.email.includes('@') ? input.email.toLowerCase() : `${input.email.toLowerCase()}@gmail.com`;
       let verifiedName = (input.name || '').trim() || `Thầy/Cô (${verifiedEmail.split('@')[0]})`;
