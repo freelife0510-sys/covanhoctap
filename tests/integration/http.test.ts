@@ -72,6 +72,49 @@ test('real HTTP router: health, fail-closed session, CSRF, body limits, and 1-cl
     const authedJson = await authedSession.json();
     assert.equal(authedJson.profile.role, 'teacher');
     assert.equal(authedJson.profile.name, 'Thầy Hồ Sỹ Long');
+
+    // Create a class and bulk-create students
+    const classId = crypto.randomUUID();
+    const createCls = await fetch(`${base}/api/classes`, {
+      method: 'POST',
+      headers: { Origin: base, Cookie: cookieHeader, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: classId, name: '12A1', grade: '12', academicYear: '2026–2027', classCode: '12A1' }),
+    });
+    assert.equal(createCls.status, 200);
+
+    const bulkRes = await fetch(`${base}/api/students-bulk`, {
+      method: 'POST',
+      headers: { Origin: base, Cookie: cookieHeader, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        classId,
+        students: [{ name: 'Nguyễn Văn An' }, { name: 'Trần Thị Bình', studentCode: '12A1-BINH' }],
+      }),
+    });
+    assert.equal(bulkRes.status, 201);
+    const bulkData = await bulkRes.json();
+    assert.equal(bulkData.created.length, 2);
+    assert.equal(bulkData.created[0].studentCode, '12A1-001');
+    assert.equal(bulkData.created[1].studentCode, '12A1-BINH');
+
+    // Student can log in with the generated credentials
+    const stuLogin = await fetch(`${base}/api/auth/student-login`, {
+      method: 'POST',
+      headers: { Origin: base, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: bulkData.created[0].studentCode,
+        password: bulkData.created[0].temporaryPassword,
+      }),
+    });
+    assert.equal(stuLogin.status, 200);
+
+    // Logout clears session cookie and succeeds even without Supabase
+    const logoutRes = await fetch(`${base}/api/logout`, {
+      method: 'POST',
+      headers: { Origin: base, Cookie: cookieHeader, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    assert.equal(logoutRes.status, 200);
+    assert.match(logoutRes.headers.get('set-cookie') || '', /Max-Age=0/);
   } finally {
     if (oldOrigin === undefined) delete process.env.APP_ORIGIN;
     else process.env.APP_ORIGIN = oldOrigin;

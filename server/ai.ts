@@ -42,9 +42,16 @@ export function validateAIExercise(value: unknown) {
   return parsed.data;
 }
 
-function getAIClientAndModels() {
-  const ai = new GoogleGenAI({ apiKey: required('GEMINI_API_KEY') });
-  const models = [required('GEMINI_PRIMARY_MODEL'), ...(process.env.GEMINI_FALLBACK_MODELS || '').split(',').map(s => s.trim()).filter(Boolean)];
+function getAIClientAndModels(overrideApiKey?: string) {
+  const userKey = overrideApiKey?.trim();
+  const apiKey = userKey || required('GEMINI_API_KEY');
+  const primaryModel = process.env.GEMINI_PRIMARY_MODEL?.trim() || (userKey ? 'gemini-2.5-flash' : required('GEMINI_PRIMARY_MODEL'));
+  const ai = new GoogleGenAI({ apiKey });
+  const fallbackList = (process.env.GEMINI_FALLBACK_MODELS || (userKey ? 'gemini-2.0-flash' : ''))
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  const models = Array.from(new Set([primaryModel, ...fallbackList]));
   const timeoutMs = Number(process.env.AI_REQUEST_TIMEOUT_MS || 45000);
   const maxTokens = Number(process.env.AI_MAX_OUTPUT_TOKENS || 8192);
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 45000 || !Number.isInteger(maxTokens) || maxTokens < 256 || maxTokens > 32768) {
@@ -56,9 +63,10 @@ function getAIClientAndModels() {
 export async function generate(
   messages: { role: string; content: string }[],
   intent: z.infer<typeof intentSchema>,
-  parts: { mimeType: string; data: string }[] = []
+  parts: { mimeType: string; data: string }[] = [],
+  overrideApiKey?: string
 ) {
-  const { ai, models, timeoutMs, maxTokens } = getAIClientAndModels();
+  const { ai, models, timeoutMs, maxTokens } = getAIClientAndModels(overrideApiKey);
   for (let i = 0; i < models.length; i++) {
     try {
       const response = await ai.models.generateContent({
@@ -100,13 +108,16 @@ export async function generate(
   throw new HttpError(503, 'AI_MODEL_UNAVAILABLE', 'Không có model đã cấu hình.');
 }
 
-export async function generateAIExercise(params: {
-  lessonTitle: string;
-  grade: number;
-  format: 'multiple_choice' | 'true_false' | 'short_answer';
-  difficulty: 'Nhận biết' | 'Thông hiểu' | 'Vận dụng';
-}) {
-  const { ai, models, timeoutMs } = getAIClientAndModels();
+export async function generateAIExercise(
+  params: {
+    lessonTitle: string;
+    grade: number;
+    format: 'multiple_choice' | 'true_false' | 'short_answer';
+    difficulty: 'Nhận biết' | 'Thông hiểu' | 'Vận dụng';
+  },
+  overrideApiKey?: string
+) {
+  const { ai, models, timeoutMs } = getAIClientAndModels(overrideApiKey);
   const schemaPrompt =
     params.format === 'multiple_choice'
       ? `{"format":"multiple_choice","question":"string","options":[{"key":"A","content":"string"},{"key":"B","content":"string"},{"key":"C","content":"string"},{"key":"D","content":"string"}],"correctAnswer":"A"|"B"|"C"|"D","cognitiveLevel":"${params.difficulty}","explanation":"string"}`
@@ -159,8 +170,8 @@ export async function generateAIExercise(params: {
   throw new HttpError(503, 'AI_MODEL_UNAVAILABLE', 'Không có model đã cấu hình.');
 }
 
-export async function generateDocumentNodePatch(params: { currentText: string; instruction: string }) {
-  const { ai, models, timeoutMs } = getAIClientAndModels();
+export async function generateDocumentNodePatch(params: { currentText: string; instruction: string }, overrideApiKey?: string) {
+  const { ai, models, timeoutMs } = getAIClientAndModels(overrideApiKey);
   for (let i = 0; i < models.length; i++) {
     try {
       const response = await ai.models.generateContent({
@@ -218,14 +229,57 @@ export type AIConnection = {
 let connectionCache: { value: AIConnection; expires: number } | null = null;
 let connectionInFlight: Promise<AIConnection> | null = null;
 
-export function checkAIConnection(force = false): Promise<AIConnection> {
+export function checkAIConnection(force = false, overrideApiKey?: string): Promise<AIConnection> {
+  const userKey = overrideApiKey?.trim();
+  const stamp = () => new Date().toISOString();
+
+  if (userKey) {
+    const ai = new GoogleGenAI({ apiKey: userKey });
+    const models = Array.from(
+      new Set([
+        process.env.GEMINI_PRIMARY_MODEL?.trim() || 'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        ...(process.env.GEMINI_FALLBACK_MODELS || '')
+          .split(',')
+          .map(m => m.trim())
+          .filter(Boolean),
+      ])
+    );
+    return (async () => {
+      let last: HttpError | null = null;
+      for (const model of models) {
+        try {
+          await ai.models.get({ model, config: { httpOptions: { timeout: 8000 } } });
+          return {
+            available: true,
+            ready: true,
+            model,
+            code: null,
+            message: 'Cố vấn AI đã kết nối bằng Gemini API Key của bạn và sẵn sàng.',
+            checkedAt: stamp(),
+          };
+        } catch (error) {
+          last = classifyProviderError(error);
+          if (last.code !== 'AI_MODEL_UNAVAILABLE') break;
+        }
+      }
+      return {
+        available: true,
+        ready: false,
+        model: null,
+        code: last?.code || 'AI_CREDENTIAL_ERROR',
+        message: last?.message || 'API Key Gemini không hợp lệ hoặc chưa truy cập được.',
+        checkedAt: stamp(),
+      };
+    })();
+  }
+
   if (!force && connectionCache && connectionCache.expires > Date.now()) return Promise.resolve(connectionCache.value);
   if (connectionInFlight) return connectionInFlight;
   const done = (value: AIConnection) => {
     connectionCache = { value, expires: Date.now() + (value.ready ? 300_000 : 20_000) };
     return value;
   };
-  const stamp = () => new Date().toISOString();
   if (!isAIConfigured()) {
     return Promise.resolve(
       done({
@@ -233,7 +287,7 @@ export function checkAIConnection(force = false): Promise<AIConnection> {
         ready: false,
         model: null,
         code: 'SETUP_REQUIRED',
-        message: 'Máy chủ chưa cấu hình đủ GEMINI_API_KEY, GEMINI_PRIMARY_MODEL và hạn mức AI.',
+        message: 'Chưa cấu hình Gemini API Key. Hãy bấm "🔑 Cấu hình API Key" trên thanh menu để nhập khóa miễn phí.',
         checkedAt: stamp(),
       })
     );

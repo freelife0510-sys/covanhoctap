@@ -246,7 +246,7 @@ export function standaloneCreateStudent(
   if (studentIndex.has(code)) throw new HttpError(409, 'CONFLICT', 'Mã học sinh đã tồn tại.');
 
   const studentId = crypto.randomUUID();
-  const temporaryPassword = randomBytes(12).toString('base64url');
+  const temporaryPassword = randomBytes(6).toString('base64url');
   tenant.students.push({
     user_id: studentId,
     student_code: code,
@@ -255,10 +255,78 @@ export function standaloneCreateStudent(
     teacher_id: teacherId,
     class_id: input.classId,
     data: { name: input.name, status: 'not_started', gapsCount: 0, testHistory: [], assignedTasks: [] },
-    forced_password_change: true,
+    forced_password_change: false,
   });
   studentIndex.set(code, teacherId);
   return { id: studentId, studentCode: code, temporaryPassword };
+}
+
+export function standaloneCreateStudentsBulk(
+  teacherId: string,
+  input: { classId: string; students: Array<{ name: string; studentCode?: string }> }
+): {
+  created: Array<{ id: string; name: string; studentCode: string; temporaryPassword: string }>;
+  skipped: Array<{ name: string; studentCode?: string; reason: string }>;
+} {
+  const tenant = getOrCreateTeacherTenant(teacherId, 'Giáo viên');
+  const ownedClass = tenant.classes.find(c => c.id === input.classId && !c.archived_at);
+  if (!ownedClass) throw new HttpError(403, 'FORBIDDEN', 'Lớp không thuộc quyền quản lý.');
+
+  const rawPrefix = String(ownedClass.data?.classCode || ownedClass.data?.name || 'HS')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8);
+  const prefix = rawPrefix || 'HS';
+
+  const created: Array<{ id: string; name: string; studentCode: string; temporaryPassword: string }> = [];
+  const skipped: Array<{ name: string; studentCode?: string; reason: string }> = [];
+  let seq = tenant.students.filter(s => s.class_id === input.classId).length + 1;
+
+  for (const item of input.students) {
+    const cleanName = item.name.trim();
+    if (!cleanName) {
+      skipped.push({ name: item.name, studentCode: item.studentCode, reason: 'Thiếu họ tên học sinh.' });
+      continue;
+    }
+
+    let code = (item.studentCode || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+    if (code) {
+      if (code.length < 3) {
+        skipped.push({ name: cleanName, studentCode: code, reason: 'Mã học sinh phải từ 3 ký tự trở lên.' });
+        continue;
+      }
+      if (studentIndex.has(code)) {
+        skipped.push({ name: cleanName, studentCode: code, reason: 'Mã học sinh đã tồn tại.' });
+        continue;
+      }
+    } else {
+      while (true) {
+        const candidate = `${prefix}-${String(seq).padStart(3, '0')}`;
+        seq += 1;
+        if (!studentIndex.has(candidate)) {
+          code = candidate;
+          break;
+        }
+      }
+    }
+
+    const studentId = crypto.randomUUID();
+    const temporaryPassword = randomBytes(6).toString('base64url');
+    tenant.students.push({
+      user_id: studentId,
+      student_code: code,
+      auth_email: `${studentId}@students.invalid`,
+      password_hash: hashPassword(temporaryPassword),
+      teacher_id: teacherId,
+      class_id: input.classId,
+      data: { name: cleanName, status: 'not_started', gapsCount: 0, testHistory: [], assignedTasks: [] },
+      forced_password_change: false,
+    });
+    studentIndex.set(code, teacherId);
+    created.push({ id: studentId, name: cleanName, studentCode: code, temporaryPassword });
+  }
+
+  return { created, skipped };
 }
 
 export function standaloneResetStudentPassword(teacherId: string, studentId: string): { temporaryPassword: string } {

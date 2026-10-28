@@ -9,11 +9,44 @@ const DocumentEditor = React.lazy(() => import('./DocumentEditor.tsx'));
 
 const LEGACY_KEYS = ['math_ai_classes_v1', 'math_ai_student_accounts_v2', 'math_ai_submissions_v1', 'saved_math_documents'] as const;
 
+interface BulkCreatedStudent {
+  id: string;
+  name: string;
+  studentCode: string;
+  temporaryPassword: string;
+}
+
+function parseBulkStudentLines(raw: string): Array<{ name: string; studentCode?: string }> {
+  return raw
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      // Strip leading numbering like "1. ", "02) "
+      const cleaned = line.replace(/^\d+\s*[.)]\s*/, '').trim();
+      // Check if formatted as "CODE - Full Name", "CODE, Full Name", or "CODE \t Full Name"
+      const match = cleaned.match(/^([A-Za-z0-9-]{3,24})\s*(?:[-|,;\t])\s*(.+)$/);
+      if (match && /[A-Za-z]/.test(match[1])) {
+        return { studentCode: match[1].trim().toUpperCase(), name: match[2].trim() };
+      }
+      return { name: cleaned };
+    })
+    .filter(item => item.name.length > 0);
+}
+
 export default function TeacherWorkspace({ session }: { session: Session }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [credential, setCredential] = useState<{ studentCode: string; temporaryPassword: string } | null>(null);
+  const [studentCreateMode, setStudentCreateMode] = useState<'bulk' | 'single'>('bulk');
+  const [bulkClassId, setBulkClassId] = useState<string>('');
+  const [bulkText, setBulkText] = useState<string>('');
+  const [bulkResult, setBulkResult] = useState<{
+    created: BulkCreatedStudent[];
+    skipped: Array<{ name: string; studentCode?: string; reason: string }>;
+  } | null>(null);
+  const [copyNotice, setCopyNotice] = useState<string>('');
   const [editingStudent, setEditingStudent] = useState<StudentRecord | null>(null);
   const [lessons, setLessons] = useState<{ id: string; title: string; grade: string }[]>([]);
   const [analytics, setAnalytics] = useState<any | null>(null);
@@ -90,9 +123,72 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
   const addStudent = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    void run(async () =>
-      setCredential(await post('/students', { name: f.get('name'), studentCode: f.get('code'), classId: f.get('classId') }))
-    );
+    const form = e.currentTarget;
+    void run(async () => {
+      setCredential(await post('/students', { name: f.get('name'), studentCode: f.get('code'), classId: f.get('classId') }));
+      form.reset();
+    });
+  };
+
+  const parsedBulkStudents = parseBulkStudentLines(bulkText);
+
+  const addStudentsBulk = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const targetClassId = bulkClassId || workspace?.classes[0]?.id || '';
+    if (!targetClassId) {
+      setError('Vui lòng tạo và chọn lớp trước khi tạo học sinh.');
+      return;
+    }
+    if (parsedBulkStudents.length === 0) {
+      setError('Vui lòng nhập ít nhất 1 dòng họ tên học sinh.');
+      return;
+    }
+    void run(async () => {
+      const res = await post<{
+        created: BulkCreatedStudent[];
+        skipped: Array<{ name: string; studentCode?: string; reason: string }>;
+      }>('/students-bulk', {
+        classId: targetClassId,
+        students: parsedBulkStudents.slice(0, 100),
+      });
+      setBulkResult(res);
+      if (res.created.length > 0) {
+        setBulkText('');
+      }
+    });
+  };
+
+  const copyBulkCredentials = () => {
+    if (!bulkResult?.created.length) return;
+    const lines = [
+      'STT\tHọ và tên\tMã học sinh\tMật khẩu đăng nhập',
+      ...bulkResult.created.map((s, idx) => `${idx + 1}\t${s.name}\t${s.studentCode}\t${s.temporaryPassword}`),
+    ].join('\n');
+    navigator.clipboard
+      ?.writeText(lines)
+      .then(() => {
+        setCopyNotice('Đã sao chép danh sách tài khoản vào bộ nhớ tạm!');
+        setTimeout(() => setCopyNotice(''), 4000);
+      })
+      .catch(() => {});
+  };
+
+  const downloadBulkCredentialsCsv = () => {
+    if (!bulkResult?.created.length) return;
+    const escapeCell = (val: string) => `"${val.replace(/"/g, '""')}"`;
+    const csvContent =
+      '\uFEFF' +
+      [
+        ['STT', 'Họ và tên', 'Mã học sinh', 'Mật khẩu đăng nhập'].map(escapeCell).join(','),
+        ...bulkResult.created.map((s, idx) => [String(idx + 1), s.name, s.studentCode, s.temporaryPassword].map(escapeCell).join(',')),
+      ].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tai-khoan-hoc-sinh-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const assign = (e: React.FormEvent<HTMLFormElement>) => {
@@ -247,10 +343,70 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
           {credential && (
             <section className="panel border-amber-400">
               <h2>Mật khẩu cấp mới · chỉ hiển thị lần này</h2>
-              <p>Mã: {credential.studentCode}</p>
-              <output className="font-mono break-all">{credential.temporaryPassword}</output>
-              <p>Giao riêng cho học sinh. Hệ thống yêu cầu đổi khi đăng nhập.</p>
+              <p>Mã học sinh: <b>{credential.studentCode}</b></p>
+              <output className="font-mono break-all font-bold text-emerald-700">{credential.temporaryPassword}</output>
+              <p>Giao mã học sinh và mật khẩu này cho học sinh để đăng nhập.</p>
               <button onClick={() => setCredential(null)}>Đã giao · đóng</button>
+            </section>
+          )}
+          {bulkResult && (
+            <section className="panel border-emerald-400 bg-emerald-50/40 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-bold text-emerald-900">
+                    Đã tạo thành công {bulkResult.created.length} tài khoản học sinh
+                  </h2>
+                  <p className="text-xs text-slate-600">
+                    Hãy sao chép hoặc tải bảng mật khẩu dưới đây để gửi cho học sinh đăng nhập.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="button" onClick={copyBulkCredentials}>
+                    📋 Sao chép danh sách
+                  </button>
+                  <button type="button" onClick={downloadBulkCredentialsCsv}>
+                    📥 Tải file CSV mật khẩu
+                  </button>
+                  <button type="button" onClick={() => setBulkResult(null)}>
+                    Đóng
+                  </button>
+                </div>
+              </div>
+              {copyNotice && <p className="text-xs font-bold text-emerald-700">{copyNotice}</p>}
+              {bulkResult.created.length > 0 && (
+                <div className="overflow-x-auto rounded-xl border bg-white">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-100 text-xs uppercase text-slate-700">
+                      <tr>
+                        <th className="px-3 py-2">STT</th>
+                        <th className="px-3 py-2">Họ và tên</th>
+                        <th className="px-3 py-2">Mã học sinh (Tài khoản)</th>
+                        <th className="px-3 py-2">Mật khẩu đăng nhập</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {bulkResult.created.map((stu, idx) => (
+                        <tr key={stu.id} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 font-mono text-xs">{idx + 1}</td>
+                          <td className="px-3 py-2 font-semibold">{stu.name}</td>
+                          <td className="px-3 py-2 font-mono font-bold text-emerald-800">{stu.studentCode}</td>
+                          <td className="px-3 py-2 font-mono font-bold text-indigo-700">{stu.temporaryPassword}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {bulkResult.skipped.length > 0 && (
+                <div className="rounded border border-amber-300 bg-amber-50 p-2.5 text-xs space-y-1">
+                  <b>Bỏ qua {bulkResult.skipped.length} dòng:</b>
+                  {bulkResult.skipped.map((sk, idx) => (
+                    <p key={idx}>
+                      • {sk.name || '(Trống)'} {sk.studentCode ? `(${sk.studentCode})` : ''}: {sk.reason}
+                    </p>
+                  ))}
+                </div>
+              )}
             </section>
           )}
           {editingStudent && (
@@ -291,7 +447,7 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
                 <form onSubmit={addClass} className="space-y-3">
                   <label>
                     Tên lớp
-                    <input required name="name" maxLength={100} />
+                    <input required name="name" maxLength={100} placeholder="Ví dụ: 12A1" />
                   </label>
                   <label>
                     Khối
@@ -307,7 +463,7 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
                   </label>
                   <label>
                     Mã lớp
-                    <input required name="code" />
+                    <input required name="code" placeholder="Ví dụ: 12A1" />
                   </label>
                   <button className="button" disabled={busy}>
                     Lưu lớp
@@ -315,72 +471,136 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
                 </form>
                 <ul className="mt-4 space-y-3">
                   {workspace.classes.map(c => (
-                    <li key={c.id} className="flex justify-between gap-2">
-                      {c.data.name}
-                      <button
-                        disabled={busy}
-                        onClick={() => {
-                          const name = prompt('Tên lớp mới', c.data.name);
-                          if (name) void run(() => post('/classes', { id: c.id, ...c.data, name }));
-                        }}
-                      >
-                        Đổi tên
-                      </button>
-                      <button
-                        disabled={busy}
-                        onClick={() => {
-                          if (confirm('Lưu trữ lớp? Bài nộp vẫn được giữ.')) void run(() => api(`/classes/${c.id}`, { method: 'DELETE' }));
-                        }}
-                      >
-                        Lưu trữ
-                      </button>
+                    <li key={c.id} className="flex justify-between gap-2 items-center">
+                      <span className="font-semibold">{c.data.name}</span>
+                      <div className="flex gap-2">
+                        <button
+                          disabled={busy}
+                          onClick={() => {
+                            const name = prompt('Tên lớp mới', c.data.name);
+                            if (name) void run(() => post('/classes', { id: c.id, ...c.data, name }));
+                          }}
+                        >
+                          Đổi tên
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={() => {
+                            if (confirm('Lưu trữ lớp? Bài nộp vẫn được giữ.')) void run(() => api(`/classes/${c.id}`, { method: 'DELETE' }));
+                          }}
+                        >
+                          Lưu trữ
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
               </section>
-              <section className="panel">
-                <h2>Cấp tài khoản học sinh</h2>
-                <form className="space-y-3" onSubmit={addStudent}>
-                  <label>
-                    Họ tên
-                    <input required name="name" />
-                  </label>
-                  <label>
-                    Mã học sinh (duy nhất)
-                    <input required name="code" minLength={3} pattern="[A-Za-z0-9-]+" />
-                  </label>
-                  <label>
-                    Lớp
-                    <select required name="classId">
-                      <option value="">Chọn lớp</option>
-                      {options}
-                    </select>
-                  </label>
-                  <button disabled={busy || !workspace.classes.length} className="button">
-                    Tạo tài khoản
-                  </button>
-                </form>
-                <ul className="mt-4 space-y-3">
-                  {workspace.students.map(s => (
-                    <li key={s.user_id}>
-                      {s.student_code} · {s.data.name}{' '}
-                      <button disabled={busy} onClick={() => setEditingStudent(s)}>
-                        Sửa / chuyển lớp
-                      </button>{' '}
-                      <button
-                        disabled={busy}
-                        onClick={() =>
-                          void run(async () => {
-                            const r = await post<{ temporaryPassword: string }>('/students/reset-password', { studentId: s.user_id });
-                            setCredential({ studentCode: s.student_code, temporaryPassword: r.temporaryPassword });
-                          })
-                        }
+              <section className="panel space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2>Cấp tài khoản học sinh</h2>
+                  <div className="flex gap-1.5 text-xs">
+                    <button
+                      type="button"
+                      className={studentCreateMode === 'bulk' ? 'button' : 'secondary'}
+                      onClick={() => setStudentCreateMode('bulk')}
+                    >
+                      📋 Tạo hàng loạt
+                    </button>
+                    <button
+                      type="button"
+                      className={studentCreateMode === 'single' ? 'button' : 'secondary'}
+                      onClick={() => setStudentCreateMode('single')}
+                    >
+                      👤 Tạo từng học sinh
+                    </button>
+                  </div>
+                </div>
+
+                {studentCreateMode === 'bulk' ? (
+                  <form className="space-y-3" onSubmit={addStudentsBulk}>
+                    <label>
+                      Chọn lớp học
+                      <select
+                        required
+                        value={bulkClassId || workspace.classes[0]?.id || ''}
+                        onChange={e => setBulkClassId(e.target.value)}
                       >
-                        Đặt lại mật khẩu
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                        <option value="">Chọn lớp</option>
+                        {options}
+                      </select>
+                    </label>
+                    <label>
+                      Danh sách học sinh (Mỗi dòng 1 học sinh · tối đa 100 em/lần)
+                      <textarea
+                        rows={6}
+                        required
+                        value={bulkText}
+                        onChange={e => setBulkText(e.target.value)}
+                        placeholder={`Dán danh sách họ tên học sinh từ Excel/Word vào đây (mỗi học sinh 1 dòng):\nNguyễn Văn An\nTrần Thị Bình\nLê Hoàng Cường\n\n(Hệ thống tự động sinh Mã học sinh & Mật khẩu, hoặc nhập: HS001 - Nguyễn Văn An)`}
+                      />
+                    </label>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                      <span>Đã nhận diện: <b>{parsedBulkStudents.length}</b> học sinh</span>
+                      {!workspace.classes.length && (
+                        <span className="text-amber-700 font-semibold">⚠️ Vui lòng tạo lớp ở cột bên trái trước.</span>
+                      )}
+                    </div>
+                    <button disabled={busy || !workspace.classes.length || parsedBulkStudents.length === 0} className="button w-full">
+                      {busy ? 'Đang tạo danh sách…' : `Tạo ngay ${parsedBulkStudents.length || ''} tài khoản học sinh`}
+                    </button>
+                  </form>
+                ) : (
+                  <form className="space-y-3" onSubmit={addStudent}>
+                    <label>
+                      Họ tên
+                      <input required name="name" placeholder="Ví dụ: Nguyễn Văn An" />
+                    </label>
+                    <label>
+                      Mã học sinh (duy nhất)
+                      <input required name="code" minLength={3} pattern="[A-Za-z0-9-]+" placeholder="Ví dụ: HS001" />
+                    </label>
+                    <label>
+                      Lớp
+                      <select required name="classId" defaultValue={workspace.classes[0]?.id || ''}>
+                        <option value="">Chọn lớp</option>
+                        {options}
+                      </select>
+                    </label>
+                    <button disabled={busy || !workspace.classes.length} className="button">
+                      Tạo tài khoản
+                    </button>
+                  </form>
+                )}
+
+                <div className="border-t pt-3 mt-3">
+                  <h3 className="text-sm font-bold mb-2">Danh sách học sinh đã tạo ({workspace.students.length})</h3>
+                  <ul className="space-y-2 max-h-72 overflow-y-auto">
+                    {workspace.students.map(s => (
+                      <li key={s.user_id} className="flex flex-wrap items-center justify-between gap-2 text-sm border-b pb-1.5">
+                        <span>
+                          <b className="font-mono text-emerald-800">{s.student_code}</b> · {s.data.name}
+                        </span>
+                        <div className="flex gap-1.5 text-xs">
+                          <button disabled={busy} onClick={() => setEditingStudent(s)}>
+                            Sửa / chuyển lớp
+                          </button>
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              void run(async () => {
+                                const r = await post<{ temporaryPassword: string }>('/students/reset-password', { studentId: s.user_id });
+                                setCredential({ studentCode: s.student_code, temporaryPassword: r.temporaryPassword });
+                              })
+                            }
+                          >
+                            Cấp lại mật khẩu
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </section>
             </div>
           )}

@@ -44,7 +44,7 @@ test('real app: landing, student login validation and honest missing-server erro
   expect(errors).toEqual([]);
 });
 
-test('real app: teacher Google login has no hardcoded email and logs in immediately with teacher own Gmail', async ({ page }) => {
+test('real app: teacher Google login has no hardcoded email, shows API key guide, creates bulk students and logs out', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Đăng nhập bằng Google (Giáo viên)' }).first().click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -53,6 +53,24 @@ test('real app: teacher Google login has no hardcoded email and logs in immediat
   await page.getByLabel('Họ và tên hiển thị (tùy chọn)').fill('Cô Nguyễn Thị Lan');
   await page.getByRole('dialog').getByRole('button', { name: 'Tiếp tục', exact: true }).click();
   await expect(page.getByRole('heading', { name: /Quản lý lớp · Cô Nguyễn Thị Lan/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cấu hình Google Gemini API Key' })).toBeVisible();
+  await expect(page.getByText('HƯỚNG DẪN LẤY API KEY MIỄN PHÍ (4 BƯỚC ĐƠN GIẢN)')).toBeVisible();
+  await page.getByRole('button', { name: 'Để sau / Đóng' }).click();
+
+  // Create class & bulk students
+  await page.getByLabel('Tên lớp').fill('12A1');
+  await page.getByLabel('Mã lớp').fill('12A1');
+  await page.getByRole('button', { name: 'Lưu lớp' }).click();
+  await expect(page.getByText('1 lớp · 0 học sinh')).toBeVisible();
+
+  await page.getByLabel(/Danh sách học sinh/).fill('Nguyễn Văn An\nTrần Thị Bình\nLê Hoàng Cường');
+  await page.getByRole('button', { name: /Tạo ngay 3 tài khoản học sinh/ }).click();
+  await expect(page.getByRole('heading', { name: /Đã tạo thành công 3 tài khoản học sinh/ })).toBeVisible();
+  await expect(page.getByText('12A1-001').first()).toBeVisible();
+
+  // Logout
+  await page.getByRole('button', { name: 'Đăng xuất', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Đăng nhập bằng Google (Giáo viên)' }).first()).toBeVisible();
 });
 
 test('UI contract mock: empty teacher workspace has no seeded students or plaintext passwords', async ({ page }) => {

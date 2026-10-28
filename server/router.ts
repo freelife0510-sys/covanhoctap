@@ -12,6 +12,7 @@ import {
   signStandaloneSession,
   standaloneChangeStudentPassword,
   standaloneCreateStudent,
+  standaloneCreateStudentsBulk,
   standaloneHandleLegacyImport,
   standaloneResetStudentPassword,
   standaloneRollbackLegacyImport,
@@ -42,13 +43,43 @@ const teacherGoogleQuickSchema = z
   })
   .strict();
 
+const studentBulkCreateSchema = z
+  .object({
+    classId: uuid,
+    students: z
+      .array(
+        z
+          .object({
+            name: z.string().trim().min(1).max(100),
+            studentCode: z.string().trim().max(40).optional(),
+          })
+          .strict()
+      )
+      .min(1)
+      .max(100),
+  })
+  .strict();
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await boundary(req, res, async () => {
     const url = new URL(req.url || '/', 'http://internal');
     const path = url.pathname.replace(/\/$/, '');
     const method = req.method || 'GET';
+    const userGeminiKey = typeof req.headers['x-gemini-api-key'] === 'string' ? req.headers['x-gemini-api-key'].trim() : '';
+
     if (path === '/api/health' && method === 'GET') {
       send(res, 200, { status: 'ok' });
+      return;
+    }
+    if ((path === '/api/logout' || path === '/api/auth/logout') && method === 'POST') {
+      const token = cookies(req).cv_access;
+      if (token && !token.startsWith('st1.') && isSupabaseConfigured()) {
+        await supabase(undefined, true)
+          .auth.admin.signOut(token, 'global')
+          .catch(() => null);
+      }
+      clearSession(res);
+      send(res, 200, { success: true });
       return;
     }
     if ((path === '/api/teacher-google' || path === '/api/auth/teacher-google') && method === 'POST') {
@@ -189,9 +220,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         return;
       }
     }
-    if (path === '/api/auth/student-login' && method === 'POST') {
+    if ((path === '/api/student-login' || path === '/api/auth/student-login') && method === 'POST') {
       const input = loginSchema.parse(await body(req));
-      const aiCheck = checkAIConnection().catch(() => null);
+      const aiCheck = checkAIConnection(false, userGeminiKey).catch(() => null);
       if (!isSupabaseConfigured()) {
         try {
           const { token } = standaloneStudentLogin(input.identifier, input.password);
@@ -224,15 +255,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const { db, id, role } = identity;
     const standaloneTenant = identity.standalone ? getOrCreateTeacherTenant(identity.teacherId || id, identity.name, identity.school) : null;
 
-    if (path === '/api/auth/logout' && method === 'POST') {
-      const token = cookies(req).cv_access;
-      if (token && !identity.standalone && isSupabaseConfigured()) {
-        await supabase(undefined, true).auth.admin.signOut(token, 'global');
-      }
-      clearSession(res);
-      send(res, 200, { success: true });
-      return;
-    }
     if (path === '/api/auth/password' && method === 'POST') {
       const { password } = z.object({ password: z.string().min(12).max(128) }).strict().parse(await body(req));
       if (identity.standalone) {
@@ -253,7 +275,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           password
         );
         setStandaloneCookie(res, changed.token);
-        send(res, 200, { success: true, relogged: true, ai: await checkAIConnection().catch(() => null) });
+        send(res, 200, { success: true, relogged: true, ai: await checkAIConnection(false, userGeminiKey).catch(() => null) });
         return;
       }
       const admin = supabase(undefined, true);
@@ -268,7 +290,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         const relogin = await supabase().auth.signInWithPassword({ email, password });
         if (relogin.data.session) {
           setSession(res, relogin.data.session);
-          send(res, 200, { success: true, relogged: true, ai: await checkAIConnection().catch(() => null) });
+          send(res, 200, { success: true, relogged: true, ai: await checkAIConnection(false, userGeminiKey).catch(() => null) });
           return;
         }
       }
@@ -309,8 +331,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
     if (identity.forcedPasswordChange) throw new HttpError(403, 'PASSWORD_CHANGE_REQUIRED', 'Vui lòng đổi mật khẩu được cấp trước khi tiếp tục.');
-    if (path === '/api/ai/status' && method === 'GET') {
-      send(res, 200, await checkAIConnection(url.searchParams.get('force') === '1'));
+    if ((path === '/api/ai-status' || path === '/api/ai/status') && method === 'GET') {
+      send(res, 200, await checkAIConnection(url.searchParams.get('force') === '1', userGeminiKey));
       return;
     }
     if (path === '/api/workspace' && method === 'GET') {
@@ -413,6 +435,62 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       send(res, 200, { success: true });
       return;
     }
+    if ((path === '/api/students-bulk' || path === '/api/students/bulk') && method === 'POST') {
+      teacher(identity);
+      const input = studentBulkCreateSchema.parse(await body(req));
+      if (standaloneTenant) {
+        send(res, 201, standaloneCreateStudentsBulk(id, input));
+        return;
+      }
+      const owned = checked(await db.from('classes').select('id,data').eq('id', input.classId).eq('teacher_id', id).is('archived_at', null).maybeSingle());
+      if (!owned) throw new HttpError(403, 'FORBIDDEN', 'Lớp không thuộc quyền quản lý.');
+      const admin = supabase(undefined, true);
+      const rawPrefix = String((owned.data as any)?.classCode || (owned.data as any)?.name || 'HS')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .slice(0, 8) || 'HS';
+      const created: Array<{ id: string; name: string; studentCode: string; temporaryPassword: string }> = [];
+      const skipped: Array<{ name: string; studentCode?: string; reason: string }> = [];
+      let seq = 1;
+
+      for (const item of input.students) {
+        const cleanName = item.name.trim();
+        let code = (item.studentCode || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+        if (!code) {
+          code = `${rawPrefix}-${String(seq).padStart(3, '0')}-${randomBytes(2).toString('hex').toUpperCase()}`;
+          seq += 1;
+        }
+        let studentId: string = randomUUID();
+        const email = `${studentId}@students.invalid`;
+        const password = randomBytes(6).toString('base64url');
+        const userRes = await admin.auth.admin.createUser({ id: studentId, email, password, email_confirm: true });
+        if (userRes.error || !userRes.data.user) {
+          skipped.push({ name: cleanName, studentCode: code, reason: 'Không tạo được tài khoản Auth.' });
+          continue;
+        }
+        studentId = userRes.data.user.id;
+        try {
+          checked(await admin.from('profiles').insert({ user_id: studentId, role: 'student', name: cleanName, forced_password_change: false }));
+          checked(
+            await admin.from('student_accounts').insert({
+              user_id: studentId,
+              student_code: code,
+              auth_email: email,
+              teacher_id: id,
+              class_id: input.classId,
+              data: { name: cleanName, status: 'not_started', gapsCount: 0, testHistory: [], assignedTasks: [] },
+            })
+          );
+          created.push({ id: studentId, name: cleanName, studentCode: code, temporaryPassword: password });
+        } catch {
+          await admin.from('profiles').delete().eq('user_id', studentId);
+          await admin.auth.admin.deleteUser(studentId);
+          skipped.push({ name: cleanName, studentCode: code, reason: 'Mã học sinh đã tồn tại hoặc lỗi dữ liệu.' });
+        }
+      }
+      send(res, 201, { created, skipped });
+      return;
+    }
     if (path === '/api/students' && method === 'POST') {
       teacher(identity);
       const input = studentCreateSchema.parse(await body(req));
@@ -430,7 +508,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       if (created.error || !created.data.user) throw new HttpError(503, 'ACCOUNT_CREATE_FAILED', 'Không tạo được tài khoản Auth.');
       studentId = created.data.user.id;
       try {
-        checked(await admin.from('profiles').insert({ user_id: studentId, role: 'student', name: input.name, forced_password_change: true }));
+        checked(await admin.from('profiles').insert({ user_id: studentId, role: 'student', name: input.name, forced_password_change: false }));
         checked(
           await admin.from('student_accounts').insert({
             user_id: studentId,
@@ -506,8 +584,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (path === '/api/ai/chat' && method === 'POST') {
       const input = chatRequestSchema.parse(await body(req));
       if (standaloneTenant) {
-        required('GEMINI_API_KEY');
-        required('GEMINI_PRIMARY_MODEL');
+        if (!userGeminiKey) {
+          required('GEMINI_API_KEY');
+          required('GEMINI_PRIMARY_MODEL');
+        }
         if (!standaloneTenant.conversations.some(c => c.id === input.conversationId)) {
           standaloneTenant.conversations.unshift({ id: input.conversationId, owner_id: id, created_at: new Date().toISOString() });
         }
@@ -518,7 +598,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             role: m.role,
             content: m.role === 'assistant' ? [m.content, m.data?.detailedSolution, m.data?.theorySummary].filter(Boolean).join('\n') : m.content,
           }));
-        const result = await generate([...history, { role: 'user', content: input.message || 'Phân tích nội dung bài toán.' }], input.intent, []);
+        const result = await generate(
+          [...history, { role: 'user', content: input.message || 'Phân tích nội dung bài toán.' }],
+          input.intent,
+          [],
+          userGeminiKey
+        );
         standaloneTenant.messages.push(
           {
             id: randomUUID(),
@@ -588,8 +673,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         if (download.error || !download.data) throw new HttpError(503, 'FILE_DOWNLOAD_FAILED', 'Không đọc được tệp.');
         parts.push({ mimeType: file.mime, data: Buffer.from(await download.data.arrayBuffer()).toString('base64') });
       }
-      required('GEMINI_API_KEY');
-      required('GEMINI_PRIMARY_MODEL');
+      if (!userGeminiKey) {
+        required('GEMINI_API_KEY');
+        required('GEMINI_PRIMARY_MODEL');
+      }
       const state = checked(
         await admin.rpc('reserve_ai', {
           p_id: input.requestId,
@@ -609,7 +696,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         throw new HttpError(409, 'REQUEST_ALREADY_PROCESSED', 'Yêu cầu đang xử lý hoặc đã thất bại. Kiểm tra lịch sử trước khi gửi lại.');
       }
       try {
-        const result = await generate([...history, { role: 'user', content: input.message || 'Phân tích nội dung tệp đính kèm.' }], input.intent, parts);
+        const result = await generate(
+          [...history, { role: 'user', content: input.message || 'Phân tích nội dung tệp đính kèm.' }],
+          input.intent,
+          parts,
+          userGeminiKey
+        );
         checked(
           await admin.rpc('finish_ai', {
             p_id: input.requestId,
@@ -643,15 +735,20 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const { lessons, questionHash } = await import('./study.ts');
       const lesson = lessons.find(l => l.id === input.lessonId);
       if (!lesson) throw new HttpError(404, 'LESSON_NOT_FOUND', 'Không tìm thấy bài học.');
-      required('GEMINI_API_KEY');
-      required('GEMINI_PRIMARY_MODEL');
+      if (!userGeminiKey) {
+        required('GEMINI_API_KEY');
+        required('GEMINI_PRIMARY_MODEL');
+      }
       if (standaloneTenant) {
-        const generated = await generateAIExercise({
-          lessonTitle: lesson.title,
-          grade: Number(lesson.grade),
-          format: input.format,
-          difficulty: input.difficulty,
-        });
+        const generated = await generateAIExercise(
+          {
+            lessonTitle: lesson.title,
+            grade: Number(lesson.grade),
+            format: input.format,
+            difficulty: input.difficulty,
+          },
+          userGeminiKey
+        );
         const qId = `ai-${lesson.id}-${input.requestId.slice(0, 8)}`;
         const questionRecord = { ...generated.question, id: qId, source: 'ai_draft', reviewState: 'draft_ai' };
         standaloneTenant.aiExercises.unshift({
@@ -696,12 +793,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         throw new HttpError(409, 'REQUEST_ALREADY_PROCESSED', 'Yêu cầu đang xử lý hoặc đã thất bại.');
       }
       try {
-        const generated = await generateAIExercise({
-          lessonTitle: lesson.title,
-          grade: Number(lesson.grade),
-          format: input.format,
-          difficulty: input.difficulty,
-        });
+        const generated = await generateAIExercise(
+          {
+            lessonTitle: lesson.title,
+            grade: Number(lesson.grade),
+            format: input.format,
+            difficulty: input.difficulty,
+          },
+          userGeminiKey
+        );
         const qId = `ai-${lesson.id}-${input.requestId.slice(0, 8)}`;
         const questionRecord = { ...generated.question, id: qId, source: 'ai_draft', reviewState: 'draft_ai' };
         const hash = questionHash(questionRecord);
@@ -740,13 +840,18 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       if (doc.revision !== input.revision) {
         throw new HttpError(409, 'REVISION_CONFLICT', 'Tài liệu đã thay đổi phiên bản trong lúc chờ AI. Vui lòng tải lại trước khi áp dụng chỉnh sửa.');
       }
-      required('GEMINI_API_KEY');
-      required('GEMINI_PRIMARY_MODEL');
+      if (!userGeminiKey) {
+        required('GEMINI_API_KEY');
+        required('GEMINI_PRIMARY_MODEL');
+      }
       if (standaloneTenant) {
-        const patchResult = await generateDocumentNodePatch({
-          currentText: input.currentText,
-          instruction: input.instruction,
-        });
+        const patchResult = await generateDocumentNodePatch(
+          {
+            currentText: input.currentText,
+            instruction: input.instruction,
+          },
+          userGeminiKey
+        );
         const proposedNode = {
           type: 'paragraph',
           attrs: { nodeId: input.targetNodeId },
@@ -779,10 +884,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       );
       if (state === 'quota') throw new HttpError(429, 'AI_QUOTA', 'Đã đạt hạn mức sử dụng AI.', true);
       try {
-        const patchResult = await generateDocumentNodePatch({
-          currentText: input.currentText,
-          instruction: input.instruction,
-        });
+        const patchResult = await generateDocumentNodePatch(
+          {
+            currentText: input.currentText,
+            instruction: input.instruction,
+          },
+          userGeminiKey
+        );
         const proposedNode = {
           type: 'paragraph',
           attrs: { nodeId: input.targetNodeId },

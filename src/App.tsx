@@ -1,7 +1,8 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
-import { api, ApiError, post } from './services/apiClient.ts';
+import { api, ApiError, getUserGeminiKey, post } from './services/apiClient.ts';
 import type { AIConnection, Session } from './features.ts';
 import LandingPage from './components/LandingPage.tsx';
+import ApiKeyModal from './components/ApiKeyModal.tsx';
 
 const TeacherWorkspace = lazy(() => import('./components/TeacherWorkspace.tsx'));
 const LearnerWorkspace = lazy(() => import('./components/LearnerWorkspace.tsx'));
@@ -58,6 +59,9 @@ export default function App() {
   const [teacherEmail, setTeacherEmail] = useState('');
   const [teacherName, setTeacherName] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
+  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(() => Boolean(getUserGeminiKey()));
+  const [apiKeyVersion, setApiKeyVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [home, setHome] = useState(true);
   const [ai, setAi] = useState<AIConnection | null>(null);
@@ -143,6 +147,9 @@ export default function App() {
       setTeacherGoogleOpen(false);
       setShowOtherAccountForm(false);
       setHome(false);
+      if (!getUserGeminiKey()) {
+        setApiKeyModalOpen(true);
+      }
     });
   };
 
@@ -184,10 +191,27 @@ export default function App() {
         setSession(await api('/session'));
         setLogin(false);
         setHome(false);
+        if (!getUserGeminiKey()) {
+          setApiKeyModalOpen(true);
+        }
       } finally {
         setLoginStep('');
       }
     });
+  };
+
+  const handleLogout = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await post('/logout', {}).catch(() => null);
+    } finally {
+      setSession(null);
+      setAi(null);
+      setProfileOpen(false);
+      setHome(true);
+      setBusy(false);
+    }
   };
 
   const changePassword = (e: React.FormEvent<HTMLFormElement>) => {
@@ -219,25 +243,25 @@ export default function App() {
         <nav className="flex flex-wrap gap-3 items-center" aria-label="Điều hướng chính">
           {session ? (
             <>
-              <span>{session.profile.name}</span>
+              <span className="font-semibold">{session.profile.name}</span>
               <button onClick={() => setHome(false)}>Không gian học tập</button>
-              <button onClick={() => setProfileOpen(true)}>Hồ sơ</button>
               <button
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    await post('/auth/logout', {});
-                    setSession(null);
-                    setAi(null);
-                    setHome(true);
-                  })
-                }
+                type="button"
+                onClick={() => setApiKeyModalOpen(true)}
+                className={hasApiKey ? 'text-emerald-800 border-emerald-300 bg-emerald-50 font-semibold' : 'button'}
               >
+                {hasApiKey ? '🔑 Đã cấu hình API Key' : '🔑 Cấu hình API Key'}
+              </button>
+              <button onClick={() => setProfileOpen(true)}>Hồ sơ</button>
+              <button type="button" disabled={busy} onClick={() => void handleLogout()}>
                 Đăng xuất
               </button>
             </>
           ) : (
             <>
+              <button type="button" onClick={() => setApiKeyModalOpen(true)}>
+                🔑 Cấu hình API Key
+              </button>
               <button onClick={() => setLogin(true)}>Đăng nhập học sinh</button>
               <button type="button" className="button" onClick={openTeacherGooglePicker}>
                 Đăng nhập bằng Google (Giáo viên)
@@ -248,6 +272,16 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
+        {session && !home && !hasApiKey && (
+          <div className="no-print rounded-2xl border border-violet-300 bg-violet-50 p-3.5 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-violet-950">
+              <b>✨ Yêu cầu cấu hình Google Gemini API Key:</b> Để sử dụng tính năng Sinh đề AI &amp; Cố vấn Toán AI, vui lòng nhập khóa Gemini API Key miễn phí của bạn (chỉ cần làm 1 lần trên trình duyệt này).
+            </div>
+            <button type="button" className="button shrink-0" onClick={() => setApiKeyModalOpen(true)}>
+              🔑 Hướng dẫn &amp; Nhập API Key
+            </button>
+          </div>
+        )}
         {error && (
           <div role="alert" className="error">
             <p>{error}</p>
@@ -279,10 +313,26 @@ export default function App() {
           ) : session.profile.role === 'teacher' ? (
             <TeacherWorkspace session={session} />
           ) : (
-            <LearnerWorkspace session={session} initialAi={ai} />
+            <LearnerWorkspace
+              session={session}
+              initialAi={ai}
+              onOpenApiKeyModal={() => setApiKeyModalOpen(true)}
+              apiKeyVersion={apiKeyVersion}
+            />
           )}
         </Suspense>
       </main>
+
+      <ApiKeyModal
+        open={apiKeyModalOpen}
+        role={session?.profile.role || 'student'}
+        onClose={() => setApiKeyModalOpen(false)}
+        onSaved={key => {
+          setHasApiKey(Boolean(key));
+          setApiKeyVersion(v => v + 1);
+          setApiKeyModalOpen(false);
+        }}
+      />
 
       {profileOpen && session && (
         <div className="modal">
