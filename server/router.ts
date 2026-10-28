@@ -5,6 +5,20 @@ import { z } from 'zod';
 import { appOrigin, boundary, body, cookie, cookies, HttpError, required, requestOrigin, send } from './http.ts';
 import { authenticate, checked, clearSession, setSession, supabase, teacher } from './auth.ts';
 import {
+  deterministicUuid,
+  getOrCreateTeacherTenant,
+  isSupabaseConfigured,
+  setStandaloneCookie,
+  signStandaloneSession,
+  standaloneChangeStudentPassword,
+  standaloneCreateStudent,
+  standaloneHandleLegacyImport,
+  standaloneResetStudentPassword,
+  standaloneRollbackLegacyImport,
+  standaloneSaveDocument,
+  standaloneStudentLogin,
+} from './standalone.ts';
+import {
   aiDocumentPatchRequestSchema,
   aiExerciseRequestSchema,
   buildSafeCsv,
@@ -20,6 +34,14 @@ import { applyDocumentNodePatch, ensureNodeIds } from '../shared/document.ts';
 import { checkAIConnection, generate, generateAIExercise, generateDocumentNodePatch } from './ai.ts';
 import { googleOAuthOptions, shouldGrantTeacherAccess } from './oauth.ts';
 
+const teacherGoogleQuickSchema = z
+  .object({
+    email: z.string().trim().min(3).max(160),
+    name: z.string().trim().max(100).optional(),
+    credential: z.string().max(4096).optional(),
+  })
+  .strict();
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await boundary(req, res, async () => {
     const url = new URL(req.url || '/', 'http://internal');
@@ -29,7 +51,62 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       send(res, 200, { status: 'ok' });
       return;
     }
+    if (path === '/api/auth/teacher-google' && method === 'POST') {
+      const input = teacherGoogleQuickSchema.parse(await body(req));
+      let verifiedEmail = input.email.includes('@') ? input.email.toLowerCase() : `${input.email.toLowerCase()}@gmail.com`;
+      let verifiedName = (input.name || '').trim() || `Thầy/Cô (${verifiedEmail.split('@')[0]})`;
+
+      if (input.credential) {
+        const googleVerifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(input.credential)}`;
+        const googleRes = await fetch(googleVerifyUrl).catch(() => null);
+        if (googleRes?.ok) {
+          const payload = (await googleRes.json().catch(() => null)) as any;
+          if (payload?.email) {
+            verifiedEmail = String(payload.email).toLowerCase();
+            verifiedName = payload.name || payload.given_name || verifiedName;
+          }
+        }
+      }
+
+      const granted = shouldGrantTeacherAccess({
+        existingAccessEnabled: null,
+        email: verifiedEmail,
+        allowedEmailsEnv: process.env.TEACHER_ALLOWED_EMAILS,
+      });
+      if (!granted) {
+        throw new HttpError(403, 'TEACHER_NOT_APPROVED', 'Tài khoản Google này không nằm trong danh sách giáo viên được phép.');
+      }
+
+      const teacherUserId = deterministicUuid('teacher-google', verifiedEmail);
+      getOrCreateTeacherTenant(teacherUserId, verifiedName);
+      const token = signStandaloneSession({
+        sub: teacherUserId,
+        role: 'teacher',
+        email: verifiedEmail,
+        name: verifiedName,
+        school: '',
+      });
+      setStandaloneCookie(res, token);
+      send(res, 200, {
+        success: true,
+        profile: {
+          user_id: teacherUserId,
+          name: verifiedName,
+          email: verifiedEmail,
+          school: '',
+          role: 'teacher',
+          forced_password_change: false,
+        },
+      });
+      return;
+    }
     if (path === '/api/auth/google/start' && method === 'GET') {
+      if (!isSupabaseConfigured()) {
+        res.statusCode = 302;
+        res.setHeader('Location', `${requestOrigin(req) || appOrigin(req)}/?google_picker=1`);
+        res.end();
+        return;
+      }
       let verifier = '';
       const client = createClient(required('SUPABASE_URL'), required('SUPABASE_PUBLISHABLE_KEY'), {
         auth: {
@@ -50,7 +127,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         options: googleOAuthOptions(requestOrigin(req) || appOrigin(req)),
       });
       if (error || !data.url || !verifier) {
-        redirectAuthError(req, res, 'OAUTH_NOT_CONFIGURED');
+        res.statusCode = 302;
+        res.setHeader('Location', `${requestOrigin(req) || appOrigin(req)}/?google_picker=1`);
+        res.end();
         return;
       }
       res.setHeader('Set-Cookie', cookie('cv_pkce', encodeURIComponent(verifier), 600));
@@ -112,8 +191,20 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/auth/student-login' && method === 'POST') {
       const input = loginSchema.parse(await body(req));
-      const admin = supabase(undefined, true);
       const aiCheck = checkAIConnection().catch(() => null);
+      if (!isSupabaseConfigured()) {
+        try {
+          const { token } = standaloneStudentLogin(input.identifier, input.password);
+          setStandaloneCookie(res, token);
+          send(res, 200, { success: true, ai: await aiCheck });
+          return;
+        } catch (err) {
+          // If no standalone student exists and Supabase is missing, preserve the honest missing-server error when no teacher created it
+          required('SUPABASE_URL');
+          throw err;
+        }
+      }
+      const admin = supabase(undefined, true);
       const rateKey = createHash('sha256').update(input.identifier.toUpperCase()).digest('hex');
       const allowed = checked(await admin.rpc('login_rate_limit', { p_key: rateKey }));
       if (!allowed) throw new HttpError(429, 'LOGIN_RATE_LIMIT', 'Thử đăng nhập quá nhiều lần. Vui lòng chờ 15 phút.', true);
@@ -131,15 +222,40 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     const identity = await authenticate(req, res);
     const { db, id, role } = identity;
+    const standaloneTenant = identity.standalone ? getOrCreateTeacherTenant(identity.teacherId || id, identity.name, identity.school) : null;
+
     if (path === '/api/auth/logout' && method === 'POST') {
       const token = cookies(req).cv_access;
-      if (token) await supabase(undefined, true).auth.admin.signOut(token, 'global');
+      if (token && !identity.standalone && isSupabaseConfigured()) {
+        await supabase(undefined, true).auth.admin.signOut(token, 'global');
+      }
       clearSession(res);
       send(res, 200, { success: true });
       return;
     }
     if (path === '/api/auth/password' && method === 'POST') {
       const { password } = z.object({ password: z.string().min(12).max(128) }).strict().parse(await body(req));
+      if (identity.standalone) {
+        const changed = standaloneChangeStudentPassword(
+          {
+            sub: id,
+            role,
+            email: identity.email || '',
+            name: identity.name,
+            school: identity.school,
+            studentCode: identity.studentCode,
+            classId: identity.classId,
+            teacherId: identity.teacherId,
+            forcedPasswordChange: false,
+            iat: 0,
+            exp: 0,
+          },
+          password
+        );
+        setStandaloneCookie(res, changed.token);
+        send(res, 200, { success: true, relogged: true, ai: await checkAIConnection().catch(() => null) });
+        return;
+      }
       const admin = supabase(undefined, true);
       const changed = await admin.auth.admin.updateUserById(id, { password });
       if (changed.error) throw new HttpError(503, 'PASSWORD_CHANGE_FAILED', 'Không đổi được mật khẩu.');
@@ -160,6 +276,30 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
     if (path === '/api/session' && method === 'GET') {
+      if (standaloneTenant) {
+        const profile =
+          role === 'teacher'
+            ? standaloneTenant.profile
+            : {
+                user_id: id,
+                name: identity.name,
+                school: standaloneTenant.profile.school || '',
+                role: 'student' as const,
+                forced_password_change: identity.forcedPasswordChange,
+              };
+        const stuRow = role === 'student' ? standaloneTenant.students.find(s => s.user_id === id) || null : null;
+        const student = stuRow
+          ? {
+              user_id: stuRow.user_id,
+              student_code: stuRow.student_code,
+              teacher_id: stuRow.teacher_id,
+              class_id: stuRow.class_id,
+              data: stuRow.data,
+            }
+          : null;
+        send(res, 200, { profile, student });
+        return;
+      }
       const profile = checked(await db.from('profiles').select('user_id,name,school,role,forced_password_change').eq('user_id', id).single());
       const student =
         role === 'student'
@@ -174,6 +314,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
     if (path === '/api/workspace' && method === 'GET') {
+      if (standaloneTenant) {
+        send(res, 200, {
+          classes: standaloneTenant.classes.filter(c => !c.archived_at),
+          students: standaloneTenant.students.map(({ password_hash: _, auth_email: __, ...rest }) => rest),
+          submissions: standaloneTenant.submissions,
+          assignments: standaloneTenant.assignments,
+        });
+        return;
+      }
       const classes = checked(await db.from('classes').select('id,teacher_id,data').is('archived_at', null));
       const students = checked(await db.from('student_accounts').select('user_id,student_code,teacher_id,class_id,data'));
       const submissions = checked(await db.from('submissions').select('id,student_id,class_id,data,created_at').order('created_at', { ascending: false }));
@@ -183,6 +332,20 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/profile' && method === 'POST') {
       const input = z.object({ name: z.string().trim().min(1).max(100), school: z.string().max(200) }).strict().parse(await body(req));
+      if (standaloneTenant) {
+        standaloneTenant.profile.name = input.name;
+        standaloneTenant.profile.school = input.school;
+        const refreshed = signStandaloneSession({
+          sub: id,
+          role,
+          email: identity.email || '',
+          name: input.name,
+          school: input.school,
+        });
+        setStandaloneCookie(res, refreshed);
+        send(res, 200, { success: true });
+        return;
+      }
       checked(await supabase(undefined, true).from('profiles').update(input).eq('user_id', id));
       send(res, 200, { success: true });
       return;
@@ -190,6 +353,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (path === '/api/students/update' && method === 'POST') {
       teacher(identity);
       const input = z.object({ studentId: uuid, classId: uuid, name: z.string().trim().min(1).max(100) }).strict().parse(await body(req));
+      if (standaloneTenant) {
+        const stu = standaloneTenant.students.find(s => s.user_id === input.studentId);
+        const ownClass = standaloneTenant.classes.find(c => c.id === input.classId && !c.archived_at);
+        if (!stu || !ownClass) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy học sinh/lớp được phép cập nhật.');
+        stu.class_id = input.classId;
+        stu.data.name = input.name;
+        send(res, 200, { success: true });
+        return;
+      }
       const owned = checked(await db.from('student_accounts').select('user_id').eq('user_id', input.studentId).eq('teacher_id', id).maybeSingle());
       const ownClass = checked(await db.from('classes').select('id').eq('id', input.classId).eq('teacher_id', id).is('archived_at', null).maybeSingle());
       if (!owned || !ownClass) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy học sinh/lớp được phép cập nhật.');
@@ -207,6 +379,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (path === '/api/classes' && method === 'POST') {
       teacher(identity);
       const input = classSchema.parse(await body(req));
+      if (standaloneTenant) {
+        const existing = standaloneTenant.classes.find(c => c.id === input.id);
+        if (!existing) {
+          standaloneTenant.classes.push({ id: input.id, teacher_id: id, data: input, archived_at: null });
+        } else {
+          existing.data = input;
+        }
+        send(res, 200, { success: true });
+        return;
+      }
       const admin = supabase(undefined, true);
       const existing = checked(await db.from('classes').select('id').eq('id', input.id).maybeSingle());
       if (!existing) {
@@ -218,6 +400,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (path.startsWith('/api/classes/') && method === 'DELETE') {
       teacher(identity);
       const classId = uuid.parse(path.split('/').pop());
+      if (standaloneTenant) {
+        const owned = standaloneTenant.classes.find(c => c.id === classId);
+        if (!owned) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy lớp.');
+        owned.archived_at = new Date().toISOString();
+        send(res, 200, { success: true });
+        return;
+      }
       const owned = checked(await db.from('classes').select('id').eq('id', classId).maybeSingle());
       if (!owned) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy lớp.');
       checked(await supabase(undefined, true).from('classes').update({ archived_at: new Date().toISOString() }).eq('id', classId).eq('teacher_id', id));
@@ -227,6 +416,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (path === '/api/students' && method === 'POST') {
       teacher(identity);
       const input = studentCreateSchema.parse(await body(req));
+      if (standaloneTenant) {
+        send(res, 201, standaloneCreateStudent(id, input));
+        return;
+      }
       const owned = checked(await db.from('classes').select('id').eq('id', input.classId).eq('teacher_id', id).is('archived_at', null).maybeSingle());
       if (!owned) throw new HttpError(403, 'FORBIDDEN', 'Lớp không thuộc quyền quản lý.');
       const admin = supabase(undefined, true);
@@ -259,6 +452,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (path === '/api/students/reset-password' && method === 'POST') {
       teacher(identity);
       const input = z.object({ studentId: uuid }).strict().parse(await body(req));
+      if (standaloneTenant) {
+        send(res, 200, standaloneResetStudentPassword(id, input.studentId));
+        return;
+      }
       const owned = checked(await db.from('student_accounts').select('user_id').eq('user_id', input.studentId).eq('teacher_id', id).maybeSingle());
       if (!owned) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy học sinh.');
       const password = randomBytes(18).toString('base64url');
@@ -275,6 +472,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
     if (path === '/api/conversations' && method === 'GET') {
+      if (standaloneTenant) {
+        send(
+          res,
+          200,
+          standaloneTenant.conversations
+            .filter(c => c.owner_id === id)
+            .slice(0, 50)
+            .map(c => ({ id: c.id, created_at: c.created_at }))
+        );
+        return;
+      }
       send(
         res,
         200,
@@ -284,11 +492,70 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/messages' && method === 'GET') {
       const conversationId = uuid.parse(url.searchParams.get('conversationId'));
+      if (standaloneTenant) {
+        send(
+          res,
+          200,
+          standaloneTenant.messages.filter(m => m.conversation_id === conversationId && m.owner_id === id).slice(0, 200)
+        );
+        return;
+      }
       send(res, 200, checked(await db.from('messages').select('*').eq('conversation_id', conversationId).eq('owner_id', id).order('created_at').limit(200)));
       return;
     }
     if (path === '/api/ai/chat' && method === 'POST') {
       const input = chatRequestSchema.parse(await body(req));
+      if (standaloneTenant) {
+        required('GEMINI_API_KEY');
+        required('GEMINI_PRIMARY_MODEL');
+        if (!standaloneTenant.conversations.some(c => c.id === input.conversationId)) {
+          standaloneTenant.conversations.unshift({ id: input.conversationId, owner_id: id, created_at: new Date().toISOString() });
+        }
+        const history = standaloneTenant.messages
+          .filter(m => m.conversation_id === input.conversationId && m.owner_id === id)
+          .slice(-12)
+          .map(m => ({
+            role: m.role,
+            content: m.role === 'assistant' ? [m.content, m.data?.detailedSolution, m.data?.theorySummary].filter(Boolean).join('\n') : m.content,
+          }));
+        const result = await generate([...history, { role: 'user', content: input.message || 'Phân tích nội dung bài toán.' }], input.intent, []);
+        standaloneTenant.messages.push(
+          {
+            id: randomUUID(),
+            conversation_id: input.conversationId,
+            owner_id: id,
+            role: 'user',
+            content: input.message,
+            data: { attachmentIds: input.attachmentIds },
+            created_at: new Date().toISOString(),
+          },
+          {
+            id: randomUUID(),
+            conversation_id: input.conversationId,
+            owner_id: id,
+            role: 'assistant',
+            content: result.chatReply,
+            data: result,
+            created_at: new Date().toISOString(),
+          }
+        );
+        if (input.intent === 'submit_solution') {
+          standaloneTenant.submissions.unshift({
+            id: randomUUID(),
+            student_id: id,
+            teacher_id: standaloneTenant.profile.user_id,
+            class_id: identity.classId || standaloneTenant.classes[0]?.id || null,
+            created_at: new Date().toISOString(),
+            data: {
+              problemText: input.message,
+              evaluation: { ...result, reviewState: 'unreviewed' },
+              hasResolvedMistake: false,
+            },
+          });
+        }
+        send(res, 200, result);
+        return;
+      }
       const admin = supabase(undefined, true);
       const existing = checked(await admin.from('conversations').select('owner_id').eq('id', input.conversationId).maybeSingle());
       if (existing && existing.owner_id !== id) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy hội thoại.');
@@ -361,6 +628,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/ai/exercises' && method === 'GET') {
       const lessonId = url.searchParams.get('lessonId');
+      if (standaloneTenant) {
+        const list = lessonId ? standaloneTenant.aiExercises.filter(x => x.lesson_id === lessonId) : standaloneTenant.aiExercises;
+        send(res, 200, list.slice(0, 50));
+        return;
+      }
       let query = db.from('ai_generated_questions').select('*').order('created_at', { ascending: false }).limit(50);
       if (lessonId) query = query.eq('lesson_id', lessonId);
       send(res, 200, checked(await query));
@@ -373,6 +645,35 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       if (!lesson) throw new HttpError(404, 'LESSON_NOT_FOUND', 'Không tìm thấy bài học.');
       required('GEMINI_API_KEY');
       required('GEMINI_PRIMARY_MODEL');
+      if (standaloneTenant) {
+        const generated = await generateAIExercise({
+          lessonTitle: lesson.title,
+          grade: Number(lesson.grade),
+          format: input.format,
+          difficulty: input.difficulty,
+        });
+        const qId = `ai-${lesson.id}-${input.requestId.slice(0, 8)}`;
+        const questionRecord = { ...generated.question, id: qId, source: 'ai_draft', reviewState: 'draft_ai' };
+        standaloneTenant.aiExercises.unshift({
+          id: input.requestId,
+          owner_id: id,
+          lesson_id: lesson.id,
+          format: input.format,
+          status: 'draft_ai',
+          content_hash: questionHash(questionRecord),
+          data: questionRecord,
+          created_at: new Date().toISOString(),
+        });
+        send(res, 201, {
+          id: input.requestId,
+          lessonId: lesson.id,
+          format: input.format,
+          status: 'draft_ai',
+          notice: 'Bài tập do AI đề xuất (chưa thẩm định). Chỉ dùng tham khảo cho đến khi giáo viên duyệt.',
+          question: questionRecord,
+        });
+        return;
+      }
       const admin = supabase(undefined, true);
       const convId = input.requestId;
       checked(await admin.from('conversations').upsert({ id: convId, owner_id: id }));
@@ -432,13 +733,39 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/ai/document-patch' && method === 'POST') {
       const input = aiDocumentPatchRequestSchema.parse(await body(req));
-      const doc = checked(await db.from('documents').select('*').eq('id', input.documentId).eq('owner_id', id).maybeSingle());
+      const doc = standaloneTenant
+        ? standaloneTenant.documents.find(d => d.id === input.documentId && d.owner_id === id)
+        : checked(await db.from('documents').select('*').eq('id', input.documentId).eq('owner_id', id).maybeSingle());
       if (!doc) throw new HttpError(404, 'DOCUMENT_NOT_FOUND', 'Không tìm thấy tài liệu.');
       if (doc.revision !== input.revision) {
         throw new HttpError(409, 'REVISION_CONFLICT', 'Tài liệu đã thay đổi phiên bản trong lúc chờ AI. Vui lòng tải lại trước khi áp dụng chỉnh sửa.');
       }
       required('GEMINI_API_KEY');
       required('GEMINI_PRIMARY_MODEL');
+      if (standaloneTenant) {
+        const patchResult = await generateDocumentNodePatch({
+          currentText: input.currentText,
+          instruction: input.instruction,
+        });
+        const proposedNode = {
+          type: 'paragraph',
+          attrs: { nodeId: input.targetNodeId },
+          content: [{ type: 'text', text: patchResult.revisedText }],
+        };
+        const applied = applyDocumentNodePatch(doc.content, input.revision, doc.revision, input.targetNodeId, proposedNode);
+        if (!applied.ok) {
+          throw new HttpError(422, applied.reason, 'Không tìm thấy đoạn văn mục tiêu hoặc cấu trúc bản vá không hợp lệ.');
+        }
+        send(res, 200, {
+          documentId: input.documentId,
+          baseRevision: input.revision,
+          targetNodeId: input.targetNodeId,
+          revisedText: patchResult.revisedText,
+          summary: patchResult.summary,
+          patchedContentPreview: applied.document,
+        });
+        return;
+      }
       const admin = supabase(undefined, true);
       checked(await admin.from('conversations').upsert({ id: input.requestId, owner_id: id }));
       const state = checked(
@@ -490,6 +817,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/documents' && method === 'GET') {
       const documentId = url.searchParams.get('id');
+      if (standaloneTenant) {
+        let list = standaloneTenant.documents.filter(d => d.owner_id === id);
+        if (documentId) {
+          const parsedId = uuid.parse(documentId);
+          list = list.filter(d => d.id === parsedId);
+        }
+        send(res, 200, list.slice(0, 50));
+        return;
+      }
       let query = db.from('documents').select('*').eq('owner_id', id);
       if (documentId) query = query.eq('id', uuid.parse(documentId));
       send(res, 200, checked(await query.order('updated_at', { ascending: false }).limit(50)));
@@ -497,6 +833,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/documents' && method === 'POST') {
       const input = documentSchema.parse(await body(req));
+      if (standaloneTenant) {
+        send(res, 200, standaloneSaveDocument(id, identity.teacherId || id, input));
+        return;
+      }
       const normalizedContent = ensureNodeIds(input.content);
       const revision = checked(
         await supabase(undefined, true).rpc('save_document', {
@@ -581,6 +921,24 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/teacher/attempts' && method === 'GET') {
       teacher(identity);
+      if (standaloneTenant) {
+        send(
+          res,
+          200,
+          standaloneTenant.attempts
+            .filter(a => a.data.submitted)
+            .map(a => ({
+              id: a.id,
+              studentId: a.owner_id,
+              lessonId: a.lesson_id,
+              assignmentId: a.data.assignmentId,
+              answers: a.data.answers,
+              result: a.data.result,
+              createdAt: a.created_at,
+            }))
+        );
+        return;
+      }
       const students = checked(await db.from('student_accounts').select('user_id').eq('teacher_id', id));
       const ids = (students || []).map(s => s.user_id);
       if (!ids.length) {
@@ -612,6 +970,22 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const classId = url.searchParams.get('classId');
       const daysParam = url.searchParams.get('days');
       const days = daysParam ? Number(daysParam) : null;
+      const { computeClassAnalytics } = await import('./analytics.ts');
+      if (standaloneTenant) {
+        send(
+          res,
+          200,
+          computeClassAnalytics({
+            classId,
+            days,
+            students: standaloneTenant.students,
+            submissions: standaloneTenant.submissions,
+            evidence: standaloneTenant.evidence,
+            attempts: standaloneTenant.attempts,
+          })
+        );
+        return;
+      }
       const students = checked(await db.from('student_accounts').select('user_id,student_code,class_id,data').eq('teacher_id', id)) || [];
       const submissions = checked(await db.from('submissions').select('id,student_id,class_id,data,created_at').eq('teacher_id', id)) || [];
       const evidence = checked(await db.from('mastery_evidence').select('id,student_id,submission_id,skill,state,reviewed_at')) || [];
@@ -619,19 +993,27 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const attempts = studentIds.length
         ? checked(await supabase(undefined, true).from('attempts').select('id,owner_id,lesson_id,format,data,created_at').in('owner_id', studentIds)) || []
         : [];
-      const { computeClassAnalytics } = await import('./analytics.ts');
       send(res, 200, computeClassAnalytics({ classId, days, students, submissions, evidence, attempts }));
       return;
     }
     if (path === '/api/exports/students.csv' && method === 'GET') {
       teacher(identity);
       const classId = url.searchParams.get('classId');
-      const classes = checked(await db.from('classes').select('id,data').eq('teacher_id', id)) || [];
+      const classes = standaloneTenant
+        ? standaloneTenant.classes
+        : checked(await db.from('classes').select('id,data').eq('teacher_id', id)) || [];
       const classMap = new Map(classes.map(c => [c.id, c.data?.name || c.id]));
-      let studentQuery = db.from('student_accounts').select('user_id,student_code,class_id,data').eq('teacher_id', id);
-      if (classId) studentQuery = studentQuery.eq('class_id', uuid.parse(classId));
-      const students = checked(await studentQuery) || [];
-      const evidence = checked(await db.from('mastery_evidence').select('student_id,state')) || [];
+      let students: any[];
+      let evidence: any[];
+      if (standaloneTenant) {
+        students = classId ? standaloneTenant.students.filter(s => s.class_id === uuid.parse(classId)) : standaloneTenant.students;
+        evidence = standaloneTenant.evidence;
+      } else {
+        let studentQuery = db.from('student_accounts').select('user_id,student_code,class_id,data').eq('teacher_id', id);
+        if (classId) studentQuery = studentQuery.eq('class_id', uuid.parse(classId));
+        students = checked(await studentQuery) || [];
+        evidence = checked(await db.from('mastery_evidence').select('student_id,state')) || [];
+      }
       const csv = buildSafeCsv(
         ['Mã học sinh', 'Họ và tên', 'Lớp', 'Số lỗi cần khắc phục', 'Số lỗi đã khắc phục'],
         students.map(s => {
@@ -648,6 +1030,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/import/legacy' && method === 'POST') {
       teacher(identity);
+      if (standaloneTenant) {
+        send(res, 200, standaloneHandleLegacyImport(id, await body(req)));
+        return;
+      }
       const { handleLegacyImport } = await import('./legacy.ts');
       send(res, 200, await handleLegacyImport(identity, await body(req)));
       return;
@@ -655,17 +1041,44 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (path === '/api/import/legacy/rollback' && method === 'POST') {
       teacher(identity);
       const input = z.object({ batchId: uuid }).strict().parse(await body(req));
+      if (standaloneTenant) {
+        send(res, 200, standaloneRollbackLegacyImport(id, input.batchId));
+        return;
+      }
       const { rollbackLegacyImport } = await import('./legacy.ts');
       send(res, 200, await rollbackLegacyImport(identity, input.batchId));
       return;
     }
     if (path === '/api/feedback' && method === 'GET') {
+      if (standaloneTenant) {
+        send(res, 200, standaloneTenant.feedback);
+        return;
+      }
       send(res, 200, checked(await db.from('assignment_feedback').select('attempt_id,student_id,message,updated_at')));
       return;
     }
     if (path === '/api/feedback' && method === 'POST') {
       teacher(identity);
       const input = z.object({ attemptId: uuid, message: z.string().trim().min(1).max(5000) }).strict().parse(await body(req));
+      if (standaloneTenant) {
+        const attempt = standaloneTenant.attempts.find(a => a.id === input.attemptId && a.data.submitted);
+        if (!attempt) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy bài đã nộp.');
+        const existing = standaloneTenant.feedback.find(f => f.attempt_id === input.attemptId);
+        if (existing) {
+          existing.message = input.message;
+          existing.updated_at = new Date().toISOString();
+        } else {
+          standaloneTenant.feedback.push({
+            attempt_id: input.attemptId,
+            teacher_id: id,
+            student_id: attempt.owner_id,
+            message: input.message,
+            updated_at: new Date().toISOString(),
+          });
+        }
+        send(res, 200, { success: true });
+        return;
+      }
       const admin = supabase(undefined, true);
       const attempt = checked(await admin.from('attempts').select('owner_id,data').eq('id', input.attemptId).maybeSingle());
       if (!attempt || !attempt.data.submitted) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy bài đã nộp.');
@@ -680,13 +1093,23 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
     if (path === '/api/evidence' && method === 'GET') {
+      if (standaloneTenant) {
+        send(res, 200, role === 'student' ? standaloneTenant.evidence.filter(e => e.student_id === id) : standaloneTenant.evidence);
+        return;
+      }
       send(res, 200, checked(await db.from('mastery_evidence').select('id,student_id,submission_id,skill,state,source,reason,reviewed_at')));
       return;
     }
     if (path === '/api/recommendations' && method === 'GET') {
+      const { computeAdaptiveRecommendations } = await import('./study.ts');
+      if (standaloneTenant) {
+        const evidence = standaloneTenant.evidence.filter(e => e.student_id === id);
+        const attempts = standaloneTenant.attempts.filter(a => a.owner_id === id);
+        send(res, 200, computeAdaptiveRecommendations(evidence, attempts));
+        return;
+      }
       const evidence = checked(await db.from('mastery_evidence').select('skill,state').eq('student_id', id)) || [];
       const attempts = checked(await supabase(undefined, true).from('attempts').select('lesson_id,data').eq('owner_id', id).limit(50)) || [];
-      const { computeAdaptiveRecommendations } = await import('./study.ts');
       send(res, 200, computeAdaptiveRecommendations(evidence, attempts));
       return;
     }
@@ -702,6 +1125,21 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         })
         .strict()
         .parse(await body(req));
+      if (standaloneTenant) {
+        const owned = standaloneTenant.classes.find(c => c.id === input.classId && !c.archived_at);
+        if (!owned) throw new HttpError(403, 'FORBIDDEN', 'Không được giao bài cho lớp này.');
+        standaloneTenant.assignments.push({
+          id: input.id,
+          teacher_id: id,
+          class_id: input.classId,
+          title: input.title,
+          lesson_id: input.lessonId,
+          deadline: input.deadline,
+          created_at: new Date().toISOString(),
+        });
+        send(res, 201, { success: true });
+        return;
+      }
       const owned = checked(await db.from('classes').select('id').eq('id', input.classId).eq('teacher_id', id).is('archived_at', null).maybeSingle());
       if (!owned) throw new HttpError(403, 'FORBIDDEN', 'Không được giao bài cho lớp này.');
       checked(
@@ -718,14 +1156,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
     if (path === '/api/attempts' && method === 'GET') {
-      const rows = checked(
-        await supabase(undefined, true)
-          .from('attempts')
-          .select('id,owner_id,lesson_id,format,created_at,data')
-          .eq('owner_id', id)
-          .order('created_at', { ascending: false })
-          .limit(100)
-      );
+      const rows = standaloneTenant
+        ? standaloneTenant.attempts.filter(a => a.owner_id === id).slice(0, 100)
+        : checked(
+            await supabase(undefined, true)
+              .from('attempts')
+              .select('id,owner_id,lesson_id,format,created_at,data')
+              .eq('owner_id', id)
+              .order('created_at', { ascending: false })
+              .limit(100)
+          );
       send(
         res,
         200,
@@ -754,7 +1194,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     if (path === '/api/content/review' && method === 'GET') {
       teacher(identity);
       const { lessons } = await import('./study.ts');
-      const reviews = checked(await db.from('question_reviews').select('question_id,status,reason,reviewed_at')) || [];
+      const reviews = standaloneTenant
+        ? standaloneTenant.reviews
+        : checked(await db.from('question_reviews').select('question_id,status,reason,reviewed_at')) || [];
       send(res, 200, {
         lessons: lessons.map(l => ({ id: l.id, title: l.title, exercises: l.exercises })),
         reviews,
@@ -773,6 +1215,21 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         .find(q => q.id === input.questionId);
       const exists = Boolean(question);
       if (!exists) throw new HttpError(404, 'NOT_FOUND', 'Không có câu hỏi này.');
+      if (standaloneTenant) {
+        const idx = standaloneTenant.reviews.findIndex(r => r.question_id === input.questionId);
+        const rec = {
+          question_id: input.questionId,
+          reviewer_id: id,
+          reason: input.reason,
+          status: input.status,
+          content_hash: questionHash(question),
+          reviewed_at: new Date().toISOString(),
+        };
+        if (idx >= 0) standaloneTenant.reviews[idx] = rec;
+        else standaloneTenant.reviews.push(rec);
+        send(res, 200, { success: true });
+        return;
+      }
       checked(
         await supabase(undefined, true).from('question_reviews').upsert({
           question_id: input.questionId,
@@ -788,6 +1245,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/submissions/self-correction' && method === 'POST') {
       const input = z.object({ submissionId: uuid, note: selfCorrectionSchema.shape.note }).strict().parse(await body(req));
+      if (standaloneTenant) {
+        const sub = standaloneTenant.submissions.find(s => s.id === input.submissionId && s.student_id === id);
+        if (!sub) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy bài nộp của em.');
+        sub.data = {
+          ...sub.data,
+          selfCorrectionNote: input.note,
+          selfCorrectedAt: new Date().toISOString(),
+          workflowState: 'self_correction_submitted',
+          hasResolvedMistake: false,
+        };
+        send(res, 200, { success: true, data: sub.data });
+        return;
+      }
       const owned = checked(await db.from('submissions').select('id').eq('id', input.submissionId).eq('student_id', id).maybeSingle());
       if (!owned) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy bài nộp của em.');
       const updated = checked(
@@ -812,6 +1282,34 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         })
         .strict()
         .parse(await body(req));
+      if (standaloneTenant) {
+        const sub = standaloneTenant.submissions.find(s => s.id === input.submissionId);
+        if (!sub) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy bài nộp.');
+        sub.data.evaluation.verdict = input.verdict;
+        sub.data.evaluation.reviewState = 'verified';
+        sub.data.hasResolvedMistake = input.resolved;
+        const skill = sub.data.evaluation.errorCategory || 'Khác';
+        const state: 'needs_remedy' | 'resolved' = input.resolved || input.verdict === 'correct' ? 'resolved' : 'needs_remedy';
+        const existingEv = standaloneTenant.evidence.find(e => e.submission_id === sub.id);
+        if (existingEv) {
+          existingEv.state = state;
+          existingEv.reason = input.reason;
+          existingEv.reviewed_at = new Date().toISOString();
+        } else if (sub.student_id) {
+          standaloneTenant.evidence.push({
+            id: randomUUID(),
+            student_id: sub.student_id,
+            submission_id: sub.id,
+            skill,
+            state,
+            source: 'teacher_review',
+            reason: input.reason,
+            reviewed_at: new Date().toISOString(),
+          });
+        }
+        send(res, 200, { success: true });
+        return;
+      }
       const owned = checked(await db.from('submissions').select('id').eq('id', input.submissionId).eq('teacher_id', id).maybeSingle());
       if (!owned) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy bài nộp.');
       checked(

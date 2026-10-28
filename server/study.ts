@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Identity } from './auth.ts';
 import { checked, supabase } from './auth.ts';
+import { getOrCreateTeacherTenant } from './standalone.ts';
 import { HIGH_SCHOOL_CURRICULUM } from './curriculum.ts';
 import { HttpError } from './http.ts';
 import { gradeShortAnswer, gradeTrueFalseQuestion, stableShuffle, TRUE_FALSE_RUBRIC_VERSION } from './grading.ts';
@@ -135,6 +136,52 @@ export async function createAttempt(identity: Identity, value: unknown) {
 
   const lesson = lessons.find(l => l.id === input.lessonId);
   if (!lesson) throw new HttpError(404, 'LESSON_NOT_FOUND', 'Không tìm thấy bài học.');
+  if (identity.standalone) {
+    const tenant = getOrCreateTeacherTenant(identity.teacherId || identity.id, identity.name);
+    const existing = tenant.attempts.find(a => a.id === input.id);
+    if (existing) {
+      if (existing.owner_id !== identity.id) throw new HttpError(409, 'CONFLICT', 'Mã lượt làm đã được sử dụng.');
+      return safeAttempt(existing);
+    }
+    const reviewMap = new Map(tenant.reviews.map(r => [r.question_id, r]));
+    const all =
+      input.format === 'multiple_choice'
+        ? lesson.exercises.multipleChoice
+        : input.format === 'true_false'
+          ? lesson.exercises.trueFalse
+          : lesson.exercises.shortAnswer;
+    const questions = all
+      .filter(q => {
+        const rev = reviewMap.get(q.id);
+        return !(rev && rev.status === 'withdrawn');
+      })
+      .map(q =>
+        'options' in q
+          ? { ...q, version: questionHash(q), options: stableShuffle(q.options, `${input.id}:${q.id}`) }
+          : { ...q, version: questionHash(q) }
+      );
+    if (!questions.length) {
+      throw new HttpError(422, 'CONTENT_REVIEW_REQUIRED', 'Các câu hỏi của dạng này đang tạm ẩn hoặc chờ giáo viên duyệt lại.');
+    }
+    const scoringMode = input.scoringMode ?? (input.format === 'true_false' ? 'exam_2025' : 'practice');
+    const row = {
+      id: input.id,
+      owner_id: identity.id,
+      lesson_id: input.lessonId,
+      format: input.format,
+      created_at: new Date().toISOString(),
+      data: {
+        questions,
+        assignmentId: input.assignmentId,
+        scoringMode,
+        answers: {},
+        submitted: false,
+        version: 2,
+      },
+    };
+    tenant.attempts.unshift(row);
+    return safeAttempt(row);
+  }
   const admin = supabase(undefined, true);
   const existing = checked(await admin.from('attempts').select('*').eq('id', input.id).maybeSingle());
   if (existing) {
@@ -222,8 +269,11 @@ export async function submitAttempt(identity: Identity, value: unknown) {
     .strict()
     .parse(value);
 
-  const admin = supabase(undefined, true);
-  const row = checked(await admin.from('attempts').select('*').eq('id', input.id).eq('owner_id', identity.id).maybeSingle());
+  const standaloneTenant = identity.standalone ? getOrCreateTeacherTenant(identity.teacherId || identity.id, identity.name) : null;
+  const admin = standaloneTenant ? null : supabase(undefined, true);
+  const row = standaloneTenant
+    ? standaloneTenant.attempts.find(a => a.id === input.id && a.owner_id === identity.id)
+    : checked(await admin!.from('attempts').select('*').eq('id', input.id).eq('owner_id', identity.id).maybeSingle());
   if (!row) throw new HttpError(404, 'ATTEMPT_NOT_FOUND', 'Không tìm thấy lượt làm.');
   if (row.data.submitted) return row.data.result;
 
@@ -288,6 +338,12 @@ export async function submitAttempt(identity: Identity, value: unknown) {
     durationSeconds: Math.max(0, Math.round((Date.now() - new Date(row.created_at).getTime()) / 1000)),
   };
 
-  const saved = checked(await admin.rpc('submit_attempt', { p_id: input.id, p_owner: identity.id, p_answers: input.answers, p_result: result }));
+  if (standaloneTenant) {
+    row.data.answers = input.answers;
+    row.data.submitted = true;
+    row.data.result = result;
+    return result;
+  }
+  const saved = checked(await admin!.rpc('submit_attempt', { p_id: input.id, p_owner: identity.id, p_answers: input.answers, p_result: result }));
   return saved;
 }

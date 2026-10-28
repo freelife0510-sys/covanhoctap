@@ -44,6 +44,15 @@ test('real app: landing, student login validation and honest missing-server erro
   expect(errors).toEqual([]);
 });
 
+test('real app: 1-click teacher Google continue logs in immediately without requiring OAuth Client ID', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Đăng nhập bằng Google (Giáo viên)' }).first().click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByText('freelife0510@gmail.com')).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Tiếp tục', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: /Quản lý lớp · Thầy Hồ Sỹ Long/ })).toBeVisible();
+});
+
 test('UI contract mock: empty teacher workspace has no seeded students or plaintext passwords', async ({ page }) => {
   await page.route('**/api/session', route => route.fulfill({ json: teacher }));
   await page.route('**/api/workspace', route => route.fulfill({ json: { classes: [], students: [], submissions: [], assignments: [] } }));
