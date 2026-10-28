@@ -259,7 +259,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 onClick={onGoToTeacher}
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer"
               >
-                <span>Vào bảng điều khiển Cố vấn</span>
+                <span>Đăng nhập bằng Google (Giáo viên)</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -603,7 +603,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-slate-900 hover:bg-black text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
             >
               <UserCheck className="w-4 h-4 text-emerald-400" />
-              <span>Tôi là Giáo viên / Cố vấn</span>
+              <span>Giáo viên · Đăng nhập bằng Google</span>
             </button>
           </div>
         </div>
@@ -658,7 +658,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </li>
               <li>
                 <button onClick={onOpenTeacherLogin} className="hover:text-emerald-700 cursor-pointer">
-                  Giáo viên · Chọn tài khoản Google
+                  Đăng nhập bằng Google (Giáo viên)
                 </button>
               </li>
             </ul>

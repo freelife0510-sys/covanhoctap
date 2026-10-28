@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { numericValue, gradeShortAnswer, gradeTrueFalseQuestion, stableShuffle } from '../../server/grading.ts';
 import { validateAI, validateAIExercise, classifyProviderError, isAIConfigured } from '../../server/ai.ts';
-import { googleOAuthOptions } from '../../server/oauth.ts';
+import { googleOAuthOptions, shouldGrantTeacherAccess } from '../../server/oauth.ts';
 import { buildSafeCsv, chatRequestSchema, csvEscapeCell, studentCreateSchema } from '../../shared/contracts.ts';
 import { applyDocumentNodePatch, ensureNodeIds, validateDocument } from '../../shared/document.ts';
 import { computeClassAnalytics } from '../../server/analytics.ts';
@@ -121,12 +121,23 @@ test('provider error types do not convert credentials/quota to model fallback', 
   assert.equal(classifyProviderError({ name: 'AbortError' }).status, 504);
 });
 
-test('teacher Google login explicitly asks to choose an account', () => {
+test('teacher Google login explicitly asks to choose an account and auto-provisions verified Gmail unless disabled or restricted', () => {
   assert.deepEqual(googleOAuthOptions('https://app.example'), {
     redirectTo: 'https://app.example/api/auth/google/callback',
     queryParams: { prompt: 'select_account' },
     skipBrowserRedirect: true,
   });
+  assert.equal(shouldGrantTeacherAccess({ existingAccessEnabled: null, email: 'teacher@gmail.com' }), true);
+  assert.equal(shouldGrantTeacherAccess({ existingAccessEnabled: false, email: 'teacher@gmail.com' }), false);
+  assert.equal(shouldGrantTeacherAccess({ existingAccessEnabled: true, email: 'teacher@gmail.com', allowedEmailsEnv: 'other@gmail.com' }), true);
+  assert.equal(
+    shouldGrantTeacherAccess({ existingAccessEnabled: null, email: 'teacher@gmail.com', allowedEmailsEnv: 'teacher@gmail.com,admin@school.edu.vn' }),
+    true
+  );
+  assert.equal(
+    shouldGrantTeacherAccess({ existingAccessEnabled: null, email: 'stranger@gmail.com', allowedEmailsEnv: 'teacher@gmail.com,admin@school.edu.vn' }),
+    false
+  );
 });
 
 test('AI readiness requires server key, model and both configured usage budgets', () => {

@@ -18,7 +18,7 @@ import {
 } from '../shared/contracts.ts';
 import { applyDocumentNodePatch, ensureNodeIds } from '../shared/document.ts';
 import { checkAIConnection, generate, generateAIExercise, generateDocumentNodePatch } from './ai.ts';
-import { googleOAuthOptions } from './oauth.ts';
+import { googleOAuthOptions, shouldGrantTeacherAccess } from './oauth.ts';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   await boundary(req, res, async () => {
@@ -81,11 +81,23 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         if (result.error || !result.data.session) throw new HttpError(401, 'OAUTH_FAILED', 'Không xác thực được Google.');
         const admin = supabase(undefined, true);
         const user = result.data.user!;
-        const access = checked(await admin.from('teacher_access').select('user_id').eq('user_id', user.id).eq('enabled', true).maybeSingle());
-        if (!access) throw new HttpError(403, 'TEACHER_NOT_APPROVED', 'Chủ ứng dụng cần cấp quyền cho giáo viên này trong teacher_access.');
+        const access = checked(await admin.from('teacher_access').select('user_id,enabled').eq('user_id', user.id).maybeSingle());
+        const granted = shouldGrantTeacherAccess({
+          existingAccessEnabled: access ? access.enabled : null,
+          email: user.email,
+          allowedEmailsEnv: process.env.TEACHER_ALLOWED_EMAILS,
+        });
+        if (!granted) {
+          throw new HttpError(403, 'TEACHER_NOT_APPROVED', 'Tài khoản Google này không nằm trong danh sách giáo viên được phép.');
+        }
+        if (!access) {
+          checked(await admin.from('teacher_access').upsert({ user_id: user.id, enabled: true }));
+        }
+        const displayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Giáo viên';
         const existing = checked(await admin.from('profiles').select('user_id').eq('user_id', user.id).maybeSingle());
-        if (!existing)
-          checked(await admin.from('profiles').insert({ user_id: user.id, role: 'teacher', name: user.user_metadata.full_name || 'Giáo viên' }));
+        if (!existing) {
+          checked(await admin.from('profiles').insert({ user_id: user.id, role: 'teacher', name: displayName }));
+        }
         setSession(res, result.data.session);
         const set = res.getHeader('Set-Cookie') as string[];
         res.setHeader('Set-Cookie', [...set, cookie('cv_pkce', '', 0)]);

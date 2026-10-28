@@ -2,7 +2,7 @@
 
 ## 1. Dành cho Giáo viên / Cố vấn
 
-1. **Đăng nhập**: Chọn **“Giáo viên · Chọn tài khoản Google”**, chọn tài khoản Google muốn sử dụng. Hệ thống thực hiện xác thực PKCE qua Supabase Auth và kiểm tra quyền trong bảng `public.teacher_access`.
+1. **Đăng nhập**: Bấm **“Đăng nhập bằng Google (Giáo viên)”**, chọn tài khoản Gmail có sẵn trên trình duyệt và bấm **Tiếp tục** để vào thẳng bảng điều khiển giáo viên. Hệ thống tự động xác thực PKCE qua Google OAuth, khởi tạo hồ sơ giáo viên và cấp quyền `teacher_access` ngay lập tức.
 2. **Quản lý lớp & cấp tài khoản học sinh**:
    - Tạo lớp mới theo khối (10, 11, 12), năm học và mã lớp.
    - Cấp tài khoản học sinh theo họ tên và mã học sinh duy nhất. Mật khẩu tạm thời ngẫu nhiên chỉ hiển thị **một lần duy nhất**; giao riêng cho học sinh và học sinh sẽ được yêu cầu đổi mật khẩu ngay lần đăng nhập đầu tiên.

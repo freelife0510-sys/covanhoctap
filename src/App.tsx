@@ -5,8 +5,8 @@ import LandingPage from './components/LandingPage.tsx';
 const TeacherWorkspace=lazy(()=>import('./components/TeacherWorkspace.tsx'));
 const LearnerWorkspace=lazy(()=>import('./components/LearnerWorkspace.tsx'));
 const AUTH_ERRORS: Record<string, string> = {
-  TEACHER_NOT_APPROVED: 'Tài khoản Google này chưa được chủ ứng dụng cấp quyền giáo viên. Hãy gửi email tài khoản cho quản trị viên để được thêm vào danh sách giáo viên (teacher_access), sau đó đăng nhập lại.',
-  OAUTH_STATE: 'Phiên đăng nhập Google đã hết hạn hoặc được mở ở địa chỉ khác. Vui lòng bấm “Giáo viên · Chọn tài khoản Google” lại.',
+  TEACHER_NOT_APPROVED: 'Tài khoản Google này đã bị thu hồi quyền hoặc không nằm trong danh sách giáo viên được phép.',
+  OAUTH_STATE: 'Phiên đăng nhập Google đã hết hạn hoặc được mở ở địa chỉ khác. Vui lòng bấm “Đăng nhập bằng Google” lại.',
   OAUTH_FAILED: 'Không xác thực được tài khoản Google. Vui lòng thử lại.',
   OAUTH_CANCELLED: 'Bạn đã hủy đăng nhập Google.',
   OAUTH_NOT_CONFIGURED: 'Máy chủ chưa cấu hình Google OAuth trong Supabase.',
@@ -61,7 +61,7 @@ export default function App() {
     <header className="no-print bg-white border-b px-4 py-4 flex flex-wrap items-center justify-between gap-3">
       <button className="font-black text-xl text-emerald-800" onClick={() => setHome(true)}>Cố Vấn Học Tập</button>
       <nav className="flex flex-wrap gap-3 items-center" aria-label="Điều hướng chính">
-        {session ? <><span>{session.profile.name}</span><button onClick={() => setHome(false)}>Không gian học tập</button><button onClick={()=>setProfileOpen(true)}>Hồ sơ</button><button disabled={busy} onClick={() => void run(async () => { await post('/auth/logout', {}); setSession(null); setAi(null); setHome(true); })}>Đăng xuất</button></> : <><button onClick={() => setLogin(true)}>Đăng nhập học sinh</button><a className="button" href="/api/auth/google/start">Giáo viên · Chọn tài khoản Google</a></>}
+        {session ? <><span>{session.profile.name}</span><button onClick={() => setHome(false)}>Không gian học tập</button><button onClick={()=>setProfileOpen(true)}>Hồ sơ</button><button disabled={busy} onClick={() => void run(async () => { await post('/auth/logout', {}); setSession(null); setAi(null); setHome(true); })}>Đăng xuất</button></> : <><button onClick={() => setLogin(true)}>Đăng nhập học sinh</button><a className="button" href="/api/auth/google/start">Đăng nhập bằng Google (Giáo viên)</a></>}
       </nav>
     </header>
     <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
