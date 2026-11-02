@@ -58,12 +58,21 @@ test('real HTTP router: health, fail-closed session, CSRF, body limits, and 1-cl
     });
     assert.equal(stillDenied.status, 403);
 
-    const quickTeacher = await fetch(`${base}/api/auth/teacher-google`, {
-      method: 'POST',
-      headers: { Origin: base, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'freelife0510@gmail.com', name: 'Thầy Hồ Sỹ Long' }),
-    });
+    const teacherLogin = (password?: string) =>
+      fetch(`${base}/api/auth/teacher-google`, {
+        method: 'POST',
+        headers: { Origin: base, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'freelife0510@gmail.com', name: 'Thầy Hồ Sỹ Long', password }),
+      });
+    // First sign-in must set a password; afterwards the wrong password is refused.
+    const noPassword = await teacherLogin();
+    assert.equal(noPassword.status, 401);
+    assert.equal((await noPassword.json()).error.code, 'TEACHER_PASSWORD_SETUP');
+    const quickTeacher = await teacherLogin('mat-khau-gv');
     assert.equal(quickTeacher.status, 200);
+    const wrongPassword = await teacherLogin('sai-mat-khau');
+    assert.equal(wrongPassword.status, 401);
+    assert.equal((await wrongPassword.json()).error.code, 'TEACHER_PASSWORD_WRONG');
     const setCookie = quickTeacher.headers.get('set-cookie') || '';
     assert.match(setCookie, /cv_access=st1\./);
     const cookieHeader = setCookie.split(',')[0].split(';')[0];

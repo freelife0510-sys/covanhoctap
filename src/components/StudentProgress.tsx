@@ -11,6 +11,8 @@ export default function StudentProgress() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [lessonNames, setLessonNames] = useState<Record<string, string>>({});
+  const lessonTitle = (id?: string | null) => (id ? lessonNames[id] || id : '');
 
   const load = () => {
     Promise.all([
@@ -30,6 +32,9 @@ export default function StudentProgress() {
 
   useEffect(() => {
     load();
+    api<{ id: string; title: string; grade: string }[]>('/curriculum')
+      .then(rows => setLessonNames(Object.fromEntries(rows.map(r => [r.id, `Lớp ${r.grade} · ${r.title}`]))))
+      .catch(() => null);
   }, []);
 
   const submitSelfCorrection = async (submissionId: string) => {
@@ -55,6 +60,23 @@ export default function StudentProgress() {
   return (
     <section className="panel space-y-4">
       <h2>Hồ sơ tiến bộ</h2>
+      {(() => {
+        const done = attempts.filter(a => a.submitted && a.result);
+        const days = new Set(done.filter(a => Date.now() - new Date(a.createdAt).getTime() <= 28 * 86_400_000).map(a => String(a.createdAt).slice(0, 10))).size;
+        const open = evidence.filter(e => e.state === 'needs_remedy').length;
+        const fixed = evidence.filter(e => e.state === 'resolved').length;
+        const scores = done.map(a => Number(a.result.score)).reverse();
+        const half = Math.floor(scores.length / 2);
+        const mean = (xs: number[]) => (xs.length ? (xs.reduce((x, y) => x + y, 0) / xs.length).toFixed(1) : '—');
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+            <div className="rounded border p-2"><div className="text-xs text-slate-500">Lượt luyện tập đã nộp</div><b className="text-lg">{done.length}</b></div>
+            <div className="rounded border p-2"><div className="text-xs text-slate-500">Số ngày tự học (4 tuần)</div><b className="text-lg">{days}</b> <span className="text-xs">≈ {(days / 4).toFixed(1)} buổi/tuần</span></div>
+            <div className="rounded border p-2"><div className="text-xs text-slate-500">Lỗi cần sửa / đã sửa</div><b className="text-lg">{open}</b> / <b className="text-lg text-emerald-700">{fixed}</b></div>
+            <div className="rounded border p-2"><div className="text-xs text-slate-500">Điểm TB: trước → gần đây</div><b className="text-lg">{scores.length >= 2 ? `${mean(scores.slice(0, half))} → ${mean(scores.slice(half))}` : mean(scores)}</b></div>
+          </div>
+        );
+      })()}
       {error && (
         <p role="alert" className="error">
           {error}
@@ -84,12 +106,16 @@ export default function StudentProgress() {
         </div>
       )}
 
-      <h3>Bằng chứng được giáo viên xác minh</h3>
+      <h3>Lỗi đã ghi nhận trong bài làm (vết lỗi)</h3>
       {evidence.length ? (
         evidence.map(e => (
           <article key={e.id} className="border-t pt-3 space-y-2">
             <div>
-              <b>{e.skill}</b> ·{' '}
+              <b>{e.skill}</b>{' '}
+              <span className="text-xs rounded-full border px-2 py-0.5 mr-1">
+                {e.source === 'ai_auto' ? 'AI tự ghi nhận · chờ giáo viên thẩm định' : 'Giáo viên đã thẩm định'}
+              </span>
+              {lessonTitle(e.lesson_id) && <span className="text-xs text-slate-600">Chủ đề: {lessonTitle(e.lesson_id)} · </span>}
               {e.state === 'resolved' ? (
                 <span className="text-emerald-700 font-semibold">Đã được giáo viên xác nhận khắc phục</span>
               ) : submittedNotes[e.submission_id] ? (
@@ -121,7 +147,7 @@ export default function StudentProgress() {
           </article>
         ))
       ) : (
-        <p>Chưa có bằng chứng đã thẩm định. Việc hỏi bài không được dùng để suy ra vùng trũng kiến thức.</p>
+        <p>Chưa có lỗi nào được ghi nhận. Khi em nhờ AI kiểm tra bài giải, các lỗi sai sẽ được lưu ở đây để em tự sửa và giáo viên theo dõi.</p>
       )}
 
       <h3>Phản hồi của giáo viên</h3>
@@ -142,7 +168,7 @@ export default function StudentProgress() {
           .map(a => (
             <article key={a.id} className="border-t pt-2">
               <p>
-                {a.lessonId} · {new Date(a.createdAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
+                {lessonTitle(a.lessonId)} · {new Date(a.createdAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
               </p>
               <p>
                 Đúng {a.result.correct}/{a.result.total} · đã trả lời {a.result.answered}/{a.result.total} · {a.result.score}/10
