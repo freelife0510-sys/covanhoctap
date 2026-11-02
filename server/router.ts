@@ -5,9 +5,12 @@ import { z } from 'zod';
 import { appOrigin, boundary, body, cookie, cookies, HttpError, required, requestOrigin, send } from './http.ts';
 import { authenticate, checked, clearSession, setSession, supabase, teacher } from './auth.ts';
 import {
+  changeTeacherPassword,
   deterministicUuid,
   getOrCreateTeacherTenant,
+  hydrateTenant,
   isSupabaseConfigured,
+  persistStandaloneRequest,
   setStandaloneCookie,
   signStandaloneSession,
   standaloneChangeStudentPassword,
@@ -18,7 +21,11 @@ import {
   standaloneRollbackLegacyImport,
   standaloneSaveDocument,
   standaloneStudentLogin,
+  verifyOrRegisterTeacherPassword,
+  withStandaloneRequest,
 } from './standalone.ts';
+import { isDurableStoreConfigured } from './persist.ts';
+import { recordAutoEvidence } from './insights.ts';
 import {
   aiDocumentPatchRequestSchema,
   aiExerciseRequestSchema,
@@ -26,6 +33,7 @@ import {
   chatRequestSchema,
   classSchema,
   documentSchema,
+  errorCategorySchema,
   loginSchema,
   selfCorrectionSchema,
   studentCreateSchema,
@@ -39,6 +47,7 @@ const teacherGoogleQuickSchema = z
   .object({
     email: z.string().trim().min(3).max(160),
     name: z.string().trim().max(100).optional(),
+    password: z.string().max(128).optional(),
     credential: z.string().max(4096).optional(),
   })
   .strict();
@@ -61,7 +70,36 @@ const studentBulkCreateSchema = z
   .strict();
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
-  await boundary(req, res, async () => {
+  const flush = deferResponseEnd(res);
+  try {
+    await withStandaloneRequest(() =>
+      boundary(req, res, async () => {
+        await route(req, res);
+        // Save standalone workspace changes before the response is released.
+        await persistStandaloneRequest();
+      })
+    );
+  } finally {
+    flush();
+  }
+}
+
+/** Holds res.end() until persistence finishes so a failed save can still turn into an error response. */
+function deferResponseEnd(res: ServerResponse) {
+  const original = res.end.bind(res) as (...args: unknown[]) => ServerResponse;
+  let pending: unknown[] | null = null;
+  (res as unknown as { end: (...args: unknown[]) => ServerResponse }).end = (...args: unknown[]) => {
+    pending = args;
+    return res;
+  };
+  return () => {
+    (res as unknown as { end: typeof original }).end = original;
+    original(...(pending ?? []));
+  };
+}
+
+async function route(req: IncomingMessage, res: ServerResponse) {
+  {
     const url = new URL(req.url || '/', 'http://internal');
     const path = url.pathname.replace(/\/$/, '');
     const method = req.method || 'GET';
@@ -86,15 +124,18 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const input = teacherGoogleQuickSchema.parse(await body(req));
       let verifiedEmail = input.email.includes('@') ? input.email.toLowerCase() : `${input.email.toLowerCase()}@gmail.com`;
       let verifiedName = (input.name || '').trim() || `Thầy/Cô (${verifiedEmail.split('@')[0]})`;
+      let googleVerified = false;
 
       if (input.credential) {
         const googleVerifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(input.credential)}`;
         const googleRes = await fetch(googleVerifyUrl).catch(() => null);
         if (googleRes?.ok) {
           const payload = (await googleRes.json().catch(() => null)) as any;
-          if (payload?.email) {
+          const expectedAudience = process.env.GOOGLE_CLIENT_ID;
+          if (payload?.email && payload.email_verified !== 'false' && (!expectedAudience || payload.aud === expectedAudience)) {
             verifiedEmail = String(payload.email).toLowerCase();
             verifiedName = payload.name || payload.given_name || verifiedName;
+            googleVerified = true;
           }
         }
       }
@@ -109,13 +150,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
 
       const teacherUserId = deterministicUuid('teacher-google', verifiedEmail);
-      getOrCreateTeacherTenant(teacherUserId, verifiedName);
+      if (!googleVerified) await verifyOrRegisterTeacherPassword(teacherUserId, input.password);
+      const tenant = await hydrateTenant(teacherUserId, { name: verifiedName });
+      // Keep the stored display name unless the teacher typed a new one.
+      if (input.name?.trim()) tenant.profile.name = input.name.trim();
+      verifiedName = tenant.profile.name || verifiedName;
       const token = signStandaloneSession({
         sub: teacherUserId,
         role: 'teacher',
         email: verifiedEmail,
         name: verifiedName,
-        school: '',
+        school: tenant.profile.school || '',
       });
       setStandaloneCookie(res, token);
       send(res, 200, {
@@ -233,16 +278,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             checkedAt: new Date().toISOString(),
           });
       if (!isSupabaseConfigured()) {
-        try {
-          const { token } = standaloneStudentLogin(input.identifier, input.password);
-          setStandaloneCookie(res, token);
-          send(res, 200, { success: true, ai: await aiCheck });
-          return;
-        } catch (err) {
-          // If no standalone student exists and Supabase is missing, preserve the honest missing-server error when no teacher created it
-          required('SUPABASE_URL');
-          throw err;
-        }
+        const { token } = await standaloneStudentLogin(input.identifier, input.password);
+        setStandaloneCookie(res, token);
+        send(res, 200, { success: true, ai: await aiCheck });
+        return;
       }
       const admin = supabase(undefined, true);
       const rateKey = createHash('sha256').update(input.identifier.toUpperCase()).digest('hex');
@@ -263,6 +302,19 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const identity = await authenticate(req, res);
     const { db, id, role } = identity;
     const standaloneTenant = identity.standalone ? getOrCreateTeacherTenant(identity.teacherId || id, identity.name, identity.school) : null;
+
+    if (path === '/api/auth/teacher-password' && method === 'POST') {
+      teacher(identity);
+      if (!identity.standalone) throw new HttpError(400, 'NOT_SUPPORTED', 'Tài khoản Google OAuth không dùng mật khẩu riêng.');
+      const input = z.object({ password: z.string().min(6).max(128) }).strict().parse(await body(req));
+      await changeTeacherPassword(id, input.password);
+      send(res, 200, { success: true });
+      return;
+    }
+    if (path === '/api/storage/status' && method === 'GET') {
+      send(res, 200, { durable: isSupabaseConfigured() || isDurableStoreConfigured() });
+      return;
+    }
 
     if (path === '/api/auth/password' && method === 'POST') {
       const { password } = z.object({ password: z.string().min(12).max(128) }).strict().parse(await body(req));
@@ -365,6 +417,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/workspace' && method === 'GET') {
       if (standaloneTenant) {
+        if (role === 'student') {
+          // Students only see their own class, their own submissions and their class assignments.
+          send(res, 200, {
+            classes: standaloneTenant.classes.filter(c => !c.archived_at && c.id === identity.classId),
+            students: [],
+            submissions: standaloneTenant.submissions.filter(s => s.student_id === id),
+            assignments: standaloneTenant.assignments.filter(a => a.class_id === identity.classId),
+          });
+          return;
+        }
         send(res, 200, {
           classes: standaloneTenant.classes.filter(c => !c.archived_at),
           students: standaloneTenant.students.map(({ password_hash: _, auth_email: __, ...rest }) => rest),
@@ -467,7 +529,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       teacher(identity);
       const input = studentBulkCreateSchema.parse(await body(req));
       if (standaloneTenant) {
-        send(res, 201, standaloneCreateStudentsBulk(id, input));
+        send(res, 201, await standaloneCreateStudentsBulk(id, input));
         return;
       }
       const owned = checked(await db.from('classes').select('id,data').eq('id', input.classId).eq('teacher_id', id).is('archived_at', null).maybeSingle());
@@ -523,7 +585,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       teacher(identity);
       const input = studentCreateSchema.parse(await body(req));
       if (standaloneTenant) {
-        send(res, 201, standaloneCreateStudent(id, input));
+        send(res, 201, await standaloneCreateStudent(id, input));
         return;
       }
       const owned = checked(await db.from('classes').select('id').eq('id', input.classId).eq('teacher_id', id).is('archived_at', null).maybeSingle());
@@ -610,7 +672,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
     if (path === '/api/ai/chat' && method === 'POST') {
-      const input = chatRequestSchema.parse(await body(req));
+      const input = chatRequestSchema.parse(await body(req, 4_400_000));
+      const { lessons } = await import('./study.ts');
+      const lesson = input.lessonId ? lessons.find(l => l.id === input.lessonId) : undefined;
+      const topicContext = lesson ? `[Chủ đề: Toán ${lesson.grade} · ${lesson.chapter} · ${lesson.title}]\n` : '';
+      const fileNote = input.inlineFiles.length ? `\n[Học sinh đính kèm ${input.inlineFiles.length} ảnh/PDF bài làm]` : '';
       if (role === 'student' && !userGeminiKey) {
         throw new HttpError(
           403,
@@ -634,9 +700,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             content: m.role === 'assistant' ? [m.content, m.data?.detailedSolution, m.data?.theorySummary].filter(Boolean).join('\n') : m.content,
           }));
         const result = await generate(
-          [...history, { role: 'user', content: input.message || 'Phân tích nội dung bài toán.' }],
+          [...history, { role: 'user', content: `${topicContext}${input.message || 'Phân tích nội dung bài làm trong tệp đính kèm.'}` }],
           input.intent,
-          [],
+          input.inlineFiles,
           userGeminiKey
         );
         standaloneTenant.messages.push(
@@ -645,8 +711,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             conversation_id: input.conversationId,
             owner_id: id,
             role: 'user',
-            content: input.message,
-            data: { attachmentIds: input.attachmentIds },
+            content: `${input.message}${fileNote}`,
+            data: { attachmentIds: input.attachmentIds, lessonId: lesson?.id, intent: input.intent, fileCount: input.inlineFiles.length },
             created_at: new Date().toISOString(),
           },
           {
@@ -659,19 +725,26 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             created_at: new Date().toISOString(),
           }
         );
-        if (input.intent === 'submit_solution') {
+        if (input.intent === 'submit_solution' && role === 'student') {
+          const submissionId = randomUUID();
           standaloneTenant.submissions.unshift({
-            id: randomUUID(),
+            id: submissionId,
             student_id: id,
             teacher_id: standaloneTenant.profile.user_id,
             class_id: identity.classId || standaloneTenant.classes[0]?.id || null,
             created_at: new Date().toISOString(),
             data: {
-              problemText: input.message,
+              problemText: [input.message, result.problemTranscript ? `**Nội dung AI đọc từ ảnh/PDF:**\n${result.problemTranscript}` : '']
+                .filter(Boolean)
+                .join('\n\n'),
+              lessonId: lesson?.id || null,
+              lessonTitle: lesson?.title || null,
+              fileCount: input.inlineFiles.length,
               evaluation: { ...result, reviewState: 'unreviewed' },
               hasResolvedMistake: false,
             },
           });
+          recordAutoEvidence(standaloneTenant, { studentId: id, submissionId, lessonId: lesson?.id, evaluation: result });
         }
         send(res, 200, result);
         return;
@@ -732,9 +805,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       }
       try {
         const result = await generate(
-          [...history, { role: 'user', content: input.message || 'Phân tích nội dung tệp đính kèm.' }],
+          [...history, { role: 'user', content: `${topicContext}${input.message || 'Phân tích nội dung tệp đính kèm.'}` }],
           input.intent,
-          parts,
+          [...parts, ...input.inlineFiles],
           userGeminiKey
         );
         checked(
@@ -1128,6 +1201,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const daysParam = url.searchParams.get('days');
       const days = daysParam ? Number(daysParam) : null;
       const { computeClassAnalytics } = await import('./analytics.ts');
+      const { lessons } = await import('./study.ts');
+      const lessonInfo = Object.fromEntries(lessons.map(l => [l.id, { title: l.title, grade: l.grade }]));
       if (standaloneTenant) {
         send(
           res,
@@ -1139,6 +1214,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             submissions: standaloneTenant.submissions,
             evidence: standaloneTenant.evidence,
             attempts: standaloneTenant.attempts,
+            lessons: lessonInfo,
           })
         );
         return;
@@ -1150,7 +1226,36 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       const attempts = studentIds.length
         ? checked(await supabase(undefined, true).from('attempts').select('id,owner_id,lesson_id,format,data,created_at').in('owner_id', studentIds)) || []
         : [];
-      send(res, 200, computeClassAnalytics({ classId, days, students, submissions, evidence, attempts }));
+      send(res, 200, computeClassAnalytics({ classId, days, students, submissions, evidence, attempts, lessons: lessonInfo }));
+      return;
+    }
+    if (path === '/api/ai/teacher-advice' && method === 'POST') {
+      teacher(identity);
+      if (!standaloneTenant) throw new HttpError(400, 'NOT_SUPPORTED', 'Chức năng này dùng với kho dữ liệu lớp học của ứng dụng.');
+      const input = z.object({ studentId: uuid }).strict().parse(await body(req));
+      const stu = standaloneTenant.students.find(s => s.user_id === input.studentId);
+      if (!stu) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy học sinh.');
+      if (!userGeminiKey) {
+        required('GEMINI_API_KEY');
+        required('GEMINI_PRIMARY_MODEL');
+      }
+      const { lessons } = await import('./study.ts');
+      const { computeStudentInsights, describeStudentForAdvice } = await import('./insights.ts');
+      const { generateTeacherAdvice } = await import('./ai.ts');
+      const [insight] = computeStudentInsights({
+        students: [stu],
+        submissions: standaloneTenant.submissions,
+        attempts: standaloneTenant.attempts,
+        evidence: standaloneTenant.evidence,
+        lessons: Object.fromEntries(lessons.map(l => [l.id, { title: l.title, grade: l.grade }])),
+      });
+      const recentErrors = standaloneTenant.evidence
+        .filter(e => e.student_id === stu.user_id && e.state === 'needs_remedy')
+        .slice(-8)
+        .map(e => ({ skill: e.skill, reason: e.reason }));
+      const advice = await generateTeacherAdvice(describeStudentForAdvice(insight, recentErrors), userGeminiKey);
+      stu.data = { ...stu.data, lastAdvice: { ...advice, createdAt: new Date().toISOString() } };
+      send(res, 200, { ...advice, createdAt: stu.data.lastAdvice.createdAt });
       return;
     }
     if (path === '/api/exports/students.csv' && method === 'GET') {
@@ -1208,7 +1313,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (path === '/api/feedback' && method === 'GET') {
       if (standaloneTenant) {
-        send(res, 200, standaloneTenant.feedback);
+        send(res, 200, role === 'student' ? standaloneTenant.feedback.filter(f => f.student_id === id) : standaloneTenant.feedback);
         return;
       }
       send(res, 200, checked(await db.from('assignment_feedback').select('attempt_id,student_id,message,updated_at')));
@@ -1436,23 +1541,24 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
           verdict: z.enum(['correct', 'incorrect', 'inconclusive']),
           reason: z.string().min(10).max(2000),
           resolved: z.boolean(),
+          skill: errorCategorySchema.optional(),
         })
         .strict()
         .parse(await body(req));
       if (standaloneTenant) {
         const sub = standaloneTenant.submissions.find(s => s.id === input.submissionId);
         if (!sub) throw new HttpError(404, 'NOT_FOUND', 'Không tìm thấy bài nộp.');
+        const hadErrors = standaloneTenant.evidence.some(e => e.submission_id === sub.id);
         sub.data.evaluation.verdict = input.verdict;
         sub.data.evaluation.reviewState = 'verified';
         sub.data.hasResolvedMistake = input.resolved;
-        const skill = sub.data.evaluation.errorCategory || 'Khác';
+        sub.data.teacherReviewReason = input.reason;
+        sub.data.reviewedAt = new Date().toISOString();
+        const skill = input.skill || sub.data.evaluation.errorCategory || 'Khác';
         const state: 'needs_remedy' | 'resolved' = input.resolved || input.verdict === 'correct' ? 'resolved' : 'needs_remedy';
-        const existingEv = standaloneTenant.evidence.find(e => e.submission_id === sub.id);
-        if (existingEv) {
-          existingEv.state = state;
-          existingEv.reason = input.reason;
-          existingEv.reviewed_at = new Date().toISOString();
-        } else if (sub.student_id) {
+        // Teacher review replaces the AI auto-logged records of this submission with one verified record.
+        standaloneTenant.evidence = standaloneTenant.evidence.filter(e => e.submission_id !== sub.id);
+        if (sub.student_id && input.verdict !== 'inconclusive' && (state === 'needs_remedy' || hadErrors)) {
           standaloneTenant.evidence.push({
             id: randomUUID(),
             student_id: sub.student_id,
@@ -1462,6 +1568,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             source: 'teacher_review',
             reason: input.reason,
             reviewed_at: new Date().toISOString(),
+            lesson_id: sub.data.lessonId || null,
+            verified: true,
           });
         }
         send(res, 200, { success: true });
@@ -1482,7 +1590,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return;
     }
     throw new HttpError(404, 'NOT_FOUND', 'Không có chức năng API này.');
-  });
+  }
 }
 
 function redirectAuthError(req: IncomingMessage, res: ServerResponse, code: string) {

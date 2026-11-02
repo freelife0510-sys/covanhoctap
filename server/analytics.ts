@@ -1,10 +1,13 @@
+import { computeStudentInsights, summarizeClass } from './insights.ts';
+
 export interface ClassAnalyticsInput {
   classId?: string | null;
   days?: number | null;
   students: Array<{ user_id: string; student_code: string; class_id: string; data?: any }>;
   submissions: Array<{ id: string; student_id: string | null; class_id: string | null; data: any; created_at: string }>;
-  evidence: Array<{ id: string; student_id: string; submission_id: string; skill: string; state: 'needs_remedy' | 'resolved'; reviewed_at: string }>;
+  evidence: Array<{ id: string; student_id: string; submission_id: string; skill: string; state: 'needs_remedy' | 'resolved'; reviewed_at: string; source?: string; lesson_id?: string | null }>;
   attempts: Array<{ id: string; owner_id: string; lesson_id: string; format: string; data: any; created_at: string }>;
+  lessons?: Record<string, { title: string; grade: string | number }>;
 }
 
 export function computeClassAnalytics(input: ClassAnalyticsInput) {
@@ -45,14 +48,17 @@ export function computeClassAnalytics(input: ClassAnalyticsInput) {
     return true;
   });
 
-  const resolvedEvidenceCount = filteredEvidence.filter(e => e.state === 'resolved').length;
-  const totalEvidenceCount = filteredEvidence.length;
+  // Resolution rate only counts teacher-verified evidence; AI auto-logged errors are shown separately.
+  const verifiedEvidence = filteredEvidence.filter(e => e.source !== 'ai_auto');
+  const resolvedEvidenceCount = verifiedEvidence.filter(e => e.state === 'resolved').length;
+  const totalEvidenceCount = verifiedEvidence.length;
 
-  const skillCounts: Record<string, { total: number; unresolved: number; resolved: number }> = {};
+  const skillCounts: Record<string, { total: number; unresolved: number; resolved: number; aiAuto: number }> = {};
   for (const ev of filteredEvidence) {
     const skill = ev.skill || 'Khác';
-    if (!skillCounts[skill]) skillCounts[skill] = { total: 0, unresolved: 0, resolved: 0 };
+    if (!skillCounts[skill]) skillCounts[skill] = { total: 0, unresolved: 0, resolved: 0, aiAuto: 0 };
     skillCounts[skill].total++;
+    if (ev.source === 'ai_auto') skillCounts[skill].aiAuto++;
     if (ev.state === 'resolved') skillCounts[skill].resolved++;
     else skillCounts[skill].unresolved++;
   }
@@ -63,7 +69,8 @@ export function computeClassAnalytics(input: ClassAnalyticsInput) {
       total: stats.total,
       unresolved: stats.unresolved,
       resolved: stats.resolved,
-      percentageOfVerifiedErrors: totalEvidenceCount > 0 ? Number(((stats.total / totalEvidenceCount) * 100).toFixed(1)) : 0,
+      aiAuto: stats.aiAuto,
+      percentageOfVerifiedErrors: filteredEvidence.length > 0 ? Number(((stats.total / filteredEvidence.length) * 100).toFixed(1)) : 0,
     }))
     .sort((a, b) => b.total - a.total);
 
@@ -103,7 +110,25 @@ export function computeClassAnalytics(input: ClassAnalyticsInput) {
     .filter(s => s.unresolvedGaps > 0 || s.pendingSelfCorrections > 0 || (s.averageAttemptScore !== null && s.averageAttemptScore < 6.0))
     .sort((a, b) => b.unresolvedGaps - a.unresolvedGaps);
 
+  const insights = computeStudentInsights({
+    students: filteredStudents,
+    submissions: validSubmissions,
+    attempts: input.attempts.filter(a => studentIdSet.has(a.owner_id)),
+    evidence: filteredEvidence,
+    lessons: input.lessons || {},
+  });
+  const classSummary = summarizeClass(
+    insights,
+    filteredEvidence,
+    [
+      ...validSubmissions.filter(s => s.student_id && studentIdSet.has(s.student_id)).map(s => s.created_at),
+      ...filteredAttempts.map(a => a.created_at),
+    ]
+  );
+
   return {
+    students: insights,
+    classSummary,
     sourceLabel: 'Thống kê theo quy tắc (Rule-based — chỉ tính dữ liệu đã xác thực, loại trừ hỏi gợi ý, chưa kết luận và dữ liệu cũ chưa kiểm chứng)',
     filters: {
       classId: input.classId || 'all',

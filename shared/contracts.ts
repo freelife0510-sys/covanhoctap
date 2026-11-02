@@ -10,12 +10,16 @@ export const errorCategorySchema = z.enum([
   'Nhầm lẫn định lý/công thức',
   'Thiếu nghiệm ngoại lai',
   'Lập luận hình học sai',
+  'Lỗi tính toán',
+  'Chưa hiểu bản chất khái niệm',
+  'Lập luận chưa chặt chẽ',
   'Khác',
 ]);
 
 export const aiResultSchema = z
   .object({
     chatReply: z.string().min(1).max(30000),
+    problemTranscript: z.string().max(20000).optional(),
     detailedSolution: z.string().max(40000).optional(),
     verdict: verdictSchema,
     errorCategory: errorCategorySchema.nullable(),
@@ -56,6 +60,18 @@ export const chatRequestSchema = z
     message: z.string().max(20000),
     attachmentIds: z.array(uuid).max(4),
     intent: intentSchema,
+    lessonId: z.string().trim().max(60).optional(),
+    inlineFiles: z
+      .array(
+        z
+          .object({
+            mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'application/pdf']),
+            data: z.string().min(16).max(4_200_000).regex(/^[A-Za-z0-9+/=]+$/),
+          })
+          .strict()
+      )
+      .max(2)
+      .default([]),
   })
   .strict();
 

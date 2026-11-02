@@ -4,6 +4,20 @@ import type { Session, Workspace, StudentRecord } from '../features.ts';
 import MathRenderer from './MathRenderer.tsx';
 import TeacherAttempts from './TeacherAttempts.tsx';
 import ContentReview from './ContentReview.tsx';
+import TeacherReports from './TeacherReports.tsx';
+import AdvisorResult, { VERDICT_LABELS } from './AdvisorResult.tsx';
+
+const ERROR_GROUPS = [
+  'Chưa đặt điều kiện xác định',
+  'Biến đổi đại số sai',
+  'Nhầm lẫn định lý/công thức',
+  'Thiếu nghiệm ngoại lai',
+  'Lập luận hình học sai',
+  'Lỗi tính toán',
+  'Chưa hiểu bản chất khái niệm',
+  'Lập luận chưa chặt chẽ',
+  'Khác',
+];
 
 const DocumentEditor = React.lazy(() => import('./DocumentEditor.tsx'));
 
@@ -54,6 +68,7 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
   const [legacyPreview, setLegacyPreview] = useState<any | null>(null);
   const [legacyCommitResult, setLegacyCommitResult] = useState<any | null>(null);
   const [legacyPayloadText, setLegacyPayloadText] = useState<string>('');
+  const [reviewing, setReviewing] = useState<string>('');
 
   useEffect(() => {
     api<{ id: string; title: string; grade: string }[]>('/curriculum')
@@ -75,7 +90,7 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
           if (alive) setError(e.message);
         });
     void refresh();
-    const timer = setInterval(refresh, 8000);
+    const timer = setInterval(refresh, 20000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -297,7 +312,7 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
           ['classes', 'Lớp & học sinh'],
           ['assignments', 'Giao bài'],
           ['submissions', 'Bài nộp'],
-          ['analytics', 'Phân tích & Sao lưu'],
+          ['analytics', 'Báo cáo học tập'],
           ['documents', 'Soạn tài liệu A4'],
           ['review', 'Thẩm định nội dung'],
         ].map(([value, label]) => (
@@ -326,8 +341,7 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
       ) : (
         <>
           <p className="text-sm text-slate-600">
-            {workspace.classes.length} lớp · {workspace.students.length} học sinh · {workspace.submissions.length} bài nộp. Dữ liệu cập nhật mỗi 8
-            giây.
+            {workspace.classes.length} lớp · {workspace.students.length} học sinh · {workspace.submissions.length} bài nộp. Dữ liệu được lưu trên máy chủ và tự cập nhật mỗi 20 giây.
           </p>
           <section className="panel">
             <h2>Thống kê đã thẩm định</h2>
@@ -659,9 +673,12 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
                         {workspace.students.find(st => st.user_id === s.student_id)?.data.name || subData.legacyStudentName || 'Học sinh'} ·{' '}
                         {new Date(s.created_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
                       </p>
+                      {subData.lessonTitle && <p className="text-xs text-slate-600">Chủ đề: {subData.lessonTitle}</p>}
                       <MathRenderer content={s.data.problemText} />
-                      <p>
-                        Kết luận AI sơ bộ: {s.data.evaluation.verdict} · {s.data.evaluation.reviewState}
+                      <p className="text-sm">
+                        {VERDICT_LABELS[s.data.evaluation.verdict]?.text || 'Không chấm điểm'} ·{' '}
+                        {s.data.evaluation.reviewState === 'verified' ? 'Giáo viên đã thẩm định' : 'AI sơ bộ — chưa thẩm định'}
+                        {subData.teacherReviewReason && <span className="text-slate-600"> · Nhận xét: {subData.teacherReviewReason}</span>}
                       </p>
                       {subData.workflowState === 'self_correction_submitted' && !subData.hasResolvedMistake && (
                         <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm">
@@ -669,16 +686,65 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
                           <p>{subData.selfCorrectionNote}</p>
                         </div>
                       )}
-                      <MathRenderer content={s.data.evaluation.chatReply} />
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          disabled={busy}
-                          onClick={() => {
-                            const verdict = prompt('Kết luận: correct / incorrect / inconclusive');
-                            const reason = prompt('Căn cứ thẩm định (ít nhất 10 ký tự)');
-                            if (verdict && reason) void run(() => post('/submissions/review', { submissionId: s.id, verdict, reason, resolved: false }));
+                      <details>
+                        <summary className="cursor-pointer text-sm font-semibold text-emerald-800">Xem phản hồi AI đầy đủ</summary>
+                        <div className="mt-2">
+                          <AdvisorResult data={s.data.evaluation as any} />
+                        </div>
+                      </details>
+                      {reviewing === s.id && (
+                        <form
+                          className="rounded border bg-slate-50 p-3 space-y-2"
+                          onSubmit={e => {
+                            e.preventDefault();
+                            const f = new FormData(e.currentTarget);
+                            const verdict = String(f.get('verdict'));
+                            void run(async () => {
+                              await post('/submissions/review', {
+                                submissionId: s.id,
+                                verdict,
+                                reason: String(f.get('reason')),
+                                resolved: false,
+                                ...(verdict === 'incorrect' ? { skill: String(f.get('skill')) } : {}),
+                              });
+                              setReviewing('');
+                            });
                           }}
                         >
+                          <div className="grid sm:grid-cols-2 gap-2">
+                            <label>
+                              Kết luận của giáo viên
+                              <select name="verdict" defaultValue={s.data.evaluation.verdict === 'correct' ? 'correct' : 'incorrect'}>
+                                <option value="correct">Bài làm đúng</option>
+                                <option value="incorrect">Bài làm sai</option>
+                                <option value="inconclusive">Chưa đủ căn cứ</option>
+                              </select>
+                            </label>
+                            <label>
+                              Nhóm lỗi (nếu sai)
+                              <select name="skill" defaultValue={(s.data.evaluation as any).errorCategory || 'Khác'}>
+                                {ERROR_GROUPS.map(g => (
+                                  <option key={g}>{g}</option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <label>
+                            Nhận xét / căn cứ thẩm định (ít nhất 10 ký tự)
+                            <textarea name="reason" required minLength={10} maxLength={2000} rows={2} />
+                          </label>
+                          <div className="flex gap-2">
+                            <button className="button" disabled={busy}>
+                              Lưu thẩm định
+                            </button>
+                            <button type="button" onClick={() => setReviewing('')}>
+                              Hủy
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <button disabled={busy} onClick={() => setReviewing(reviewing === s.id ? '' : s.id)}>
                           Thẩm định / sửa kết quả
                         </button>{' '}
                         <button
@@ -701,7 +767,7 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
             <div className="space-y-5">
               <section className="panel space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2>Phân tích lớp học (Rule-based)</h2>
+                  <h2>Báo cáo học tập của lớp</h2>
                   <label className="text-sm">
                     Lọc theo lớp
                     <select value={analyticsClassId} onChange={e => setAnalyticsClassId(e.target.value)}>
@@ -710,8 +776,13 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
                     </select>
                   </label>
                 </div>
+                <TeacherReports
+                  analytics={analytics}
+                  savedAdvice={Object.fromEntries(workspace.students.map(st => [st.user_id, (st.data as any).lastAdvice]))}
+                />
                 {analytics ? (
                   <div className="space-y-3 text-sm">
+                    <h3 className="font-bold">Chỉ số đã được giáo viên thẩm định</h3>
                     <p className="text-xs text-slate-600">{analytics.sourceLabel}</p>
                     <div className="grid md:grid-cols-3 gap-3">
                       <div className="rounded border p-3">
@@ -744,9 +815,7 @@ export default function TeacherWorkspace({ session }: { session: Session }) {
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <p className="text-sm">Đang tính toán thống kê lớp học…</p>
-                )}
+                ) : null}
               </section>
 
               <section className="panel space-y-3">

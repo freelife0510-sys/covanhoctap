@@ -58,6 +58,8 @@ export default function App() {
   const [showOtherAccountForm, setShowOtherAccountForm] = useState(false);
   const [teacherEmail, setTeacherEmail] = useState('');
   const [teacherName, setTeacherName] = useState('');
+  const [teacherPassword, setTeacherPassword] = useState('');
+  const [teacherPasswordHint, setTeacherPasswordHint] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(() => Boolean(getUserGeminiKey()));
@@ -131,13 +133,25 @@ export default function App() {
     }
   };
 
-  const handleTeacherGoogleContinue = (emailRaw: string, nameRaw?: string) => {
+  const handleTeacherGoogleContinue = (emailRaw: string, nameRaw?: string, password?: string) => {
     const cleanEmail = emailRaw.trim().includes('@') ? emailRaw.trim().toLowerCase() : `${emailRaw.trim().toLowerCase()}@gmail.com`;
     const displayName = (nameRaw || '').trim() || `Thầy/Cô (${cleanEmail.split('@')[0]})`;
     const avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}&gender=male`;
 
     void run(async () => {
-      await post('/teacher-google', { email: cleanEmail, name: displayName });
+      try {
+        await post('/teacher-google', { email: cleanEmail, name: (nameRaw || '').trim() || undefined, password: password || undefined });
+      } catch (e) {
+        if (e instanceof ApiError && e.code.startsWith('TEACHER_PASSWORD')) {
+          setTeacherEmail(cleanEmail);
+          setTeacherName(nameRaw || '');
+          setShowOtherAccountForm(true);
+          setTeacherPasswordHint(e.message);
+        }
+        throw e;
+      }
+      setTeacherPassword('');
+      setTeacherPasswordHint('');
       try {
         localStorage.setItem('google_teacher_email', cleanEmail);
         localStorage.setItem('google_teacher_name', displayName);
@@ -390,6 +404,27 @@ export default function App() {
                 Lưu hồ sơ
               </button>
             </form>
+            {session.profile.role === 'teacher' && (
+              <form
+                className="space-y-3 mt-4"
+                onSubmit={e => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  const form = e.currentTarget;
+                  void run(async () => {
+                    await post('/auth/teacher-password', { password: f.get('password') });
+                    form.reset();
+                    setError('Đã đổi mật khẩu giáo viên. Lần đăng nhập sau hãy dùng mật khẩu mới.');
+                  });
+                }}
+              >
+                <label>
+                  Đổi mật khẩu giáo viên (ít nhất 6 ký tự)
+                  <input name="password" required type="password" minLength={6} maxLength={128} autoComplete="new-password" />
+                </label>
+                <button disabled={busy}>Đổi mật khẩu</button>
+              </form>
+            )}
             {session.profile.role === 'student' && (
               <form
                 className="space-y-3 mt-4"
@@ -440,7 +475,7 @@ export default function App() {
                 Đăng nhập bằng Google (Giáo viên)
               </h2>
               <p className="text-xs text-slate-500">
-                Mỗi giáo viên đăng nhập bằng Gmail cá nhân sẽ có không gian quản lý lớp học và học sinh độc lập trên trình duyệt của mình
+                Mỗi giáo viên đăng nhập bằng Gmail + mật khẩu riêng; dữ liệu lớp học được lưu trên máy chủ và mở được từ mọi thiết bị
               </p>
             </div>
 
@@ -459,7 +494,13 @@ export default function App() {
                           type="button"
                           disabled={busy}
                           className="button"
-                          onClick={() => handleTeacherGoogleContinue(acc.email, acc.name)}
+                          onClick={() => {
+                            setTeacherEmail(acc.email);
+                            setTeacherName(acc.name);
+                            setTeacherPassword('');
+                            setTeacherPasswordHint('Nhập mật khẩu giáo viên của tài khoản này.');
+                            setShowOtherAccountForm(true);
+                          }}
                         >
                           {busy ? 'Đang vào…' : 'Tiếp tục'}
                         </button>
@@ -492,7 +533,7 @@ export default function App() {
                 onSubmit={e => {
                   e.preventDefault();
                   if (!teacherEmail.trim()) return;
-                  handleTeacherGoogleContinue(teacherEmail, teacherName);
+                  handleTeacherGoogleContinue(teacherEmail, teacherName, teacherPassword);
                 }}
               >
                 <label>
@@ -521,6 +562,24 @@ export default function App() {
                     maxLength={100}
                   />
                 </label>
+                <label>
+                  Mật khẩu giáo viên
+                  <input
+                    required
+                    type="password"
+                    name="password"
+                    autoComplete="current-password"
+                    placeholder="Lần đầu đăng nhập: tự đặt mật khẩu mới (ít nhất 6 ký tự)"
+                    value={teacherPassword}
+                    onChange={e => setTeacherPassword(e.target.value)}
+                    minLength={6}
+                    maxLength={128}
+                  />
+                </label>
+                <p className="text-xs text-slate-600">
+                  {teacherPasswordHint ||
+                    'Lần đầu dùng Gmail này, mật khẩu bạn nhập sẽ trở thành mật khẩu bảo vệ lớp học. Những lần sau phải nhập đúng mật khẩu này.'}
+                </p>
                 <div className="flex flex-wrap gap-2">
                   <button type="submit" disabled={busy} className="button">
                     {busy ? 'Đang đăng nhập…' : 'Tiếp tục'}

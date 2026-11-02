@@ -51,7 +51,7 @@ export interface AdaptiveRecommendation {
 }
 
 export function computeAdaptiveRecommendations(
-  evidenceRows: Array<{ skill?: string; state?: string }>,
+  evidenceRows: Array<{ skill?: string; state?: string; lesson_id?: string | null }>,
   attemptRows: Array<{ lesson_id?: string; data?: any }>
 ): AdaptiveRecommendation {
   const verifiedEvidence = (evidenceRows || []).filter(
@@ -69,7 +69,7 @@ export function computeAdaptiveRecommendations(
   }
 
   const recommendations: AdaptiveRecommendation['recommendedLessons'] = [];
-  const unresolvedSkills = verifiedEvidence.filter(e => e.state === 'needs_remedy').map(e => e.skill || 'Khác');
+  const unresolvedSkills = verifiedEvidence.filter(e => e.state === 'needs_remedy' && !e.lesson_id).map(e => e.skill || 'Khác');
 
   const skillToLessonMap: Record<string, string[]> = {
     'Chưa đặt điều kiện xác định': ['10-c6-b1', '11-c6-b1', '12-c1-b3'],
@@ -78,6 +78,20 @@ export function computeAdaptiveRecommendations(
     'Thiếu nghiệm ngoại lai': ['10-c6-b1', '11-c1-b2'],
     'Lập luận hình học sai': ['10-c4-b1', '11-c8-b1', '12-c5-b1'],
   };
+
+  // Lessons where an unresolved error was actually made come first.
+  for (const ev of verifiedEvidence.filter(e => e.state === 'needs_remedy' && e.lesson_id)) {
+    const lesson = lessons.find(l => l.id === ev.lesson_id);
+    if (lesson && !recommendations.some(r => r.lessonId === lesson.id)) {
+      recommendations.push({
+        lessonId: lesson.id,
+        title: lesson.title,
+        grade: lesson.grade,
+        reason: `Em đã mắc lỗi "${ev.skill || 'Khác'}" khi làm bài thuộc chủ đề này; hãy xem lại lí thuyết và làm lại bài tương tự.`,
+        priority: 'high',
+      });
+    }
+  }
 
   for (const skill of Array.from(new Set(unresolvedSkills))) {
     const candidateIds = skillToLessonMap[skill] || ['12-c1-b1'];

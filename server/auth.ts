@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cookie, cookies, HttpError, required } from './http.ts';
-import { getOrCreateTeacherTenant, getStandaloneSessionFromReq } from './standalone.ts';
+import { getStandaloneSessionFromReq, hydrateTenant } from './standalone.ts';
 
 export const supabase = (token?: string, admin = false) =>
   createClient(required('SUPABASE_URL'), required(admin ? 'SUPABASE_SECRET_KEY' : 'SUPABASE_PUBLISHABLE_KEY'), {
@@ -38,7 +38,7 @@ export async function authenticate(req: IncomingMessage, res: ServerResponse): P
   const standalonePayload = getStandaloneSessionFromReq(req);
   if (standalonePayload) {
     if (standalonePayload.role === 'teacher') {
-      const tenant = getOrCreateTeacherTenant(standalonePayload.sub, standalonePayload.name, standalonePayload.school || '');
+      const tenant = await hydrateTenant(standalonePayload.sub, { name: standalonePayload.name, school: standalonePayload.school || '' });
       return {
         id: standalonePayload.sub,
         role: 'teacher',
@@ -51,17 +51,24 @@ export async function authenticate(req: IncomingMessage, res: ServerResponse): P
         teacherId: standalonePayload.sub,
       };
     }
+    const teacherId = standalonePayload.teacherId || standalonePayload.sub;
+    const tenant = await hydrateTenant(teacherId, { studentId: standalonePayload.sub });
+    const account = tenant.students.find(s => s.user_id === standalonePayload.sub);
+    if (!account) {
+      clearSession(res);
+      throw new HttpError(401, 'UNAUTHENTICATED', 'Tài khoản học sinh không còn tồn tại. Vui lòng đăng nhập lại.');
+    }
     return {
       id: standalonePayload.sub,
       role: 'student',
       db: null as unknown as SupabaseClient,
-      name: standalonePayload.name,
-      school: standalonePayload.school || '',
+      name: account.data.name || standalonePayload.name,
+      school: tenant.profile.school || '',
       email: standalonePayload.email,
-      studentCode: standalonePayload.studentCode,
-      classId: standalonePayload.classId,
-      teacherId: standalonePayload.teacherId || standalonePayload.sub,
-      forcedPasswordChange: Boolean(standalonePayload.forcedPasswordChange),
+      studentCode: account.student_code,
+      classId: account.class_id,
+      teacherId,
+      forcedPasswordChange: Boolean(account.forced_password_change),
       standalone: true,
     };
   }

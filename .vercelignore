@@ -1,0 +1,7 @@
+VoiceStudio
+playwright-report
+test-results
+.server-check
+dist
+debug.log
+.env*

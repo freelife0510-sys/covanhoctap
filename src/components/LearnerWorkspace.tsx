@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, post, upload } from '../services/apiClient.ts';
+import { api, fileToInline, post } from '../services/apiClient.ts';
 import type { AIConnection, Session, Workspace } from '../features.ts';
 import MathRenderer from './MathRenderer.tsx';
+import AdvisorResult, { type AdvisorData, VERDICT_LABELS } from './AdvisorResult.tsx';
 const DocumentEditor = React.lazy(() => import('./DocumentEditor.tsx'));
 import StudentProgress from './StudentProgress.tsx';
 import Practice from './Practice.tsx';
@@ -10,8 +11,18 @@ type Message = {
   id: string;
   role: string;
   content: string;
-  data?: { detailedSolution?: string; verdict?: string; modelUsed?: string; reviewState?: string };
+  data?: AdvisorData & { lessonId?: string; intent?: string; fileCount?: number };
 };
+
+/** Student-facing modes; each maps to a server intent. */
+const MODES = [
+  { key: 'check', intent: 'submit_solution', label: 'Kiểm tra bài giải', hint: 'Dán đề + bài làm của em (hoặc chụp ảnh bài làm). AI kiểm tra từng bước, chỉ ra lỗi sai và cách sửa.' },
+  { key: 'explain', intent: 'ask_guidance', label: 'Giải thích chỗ chưa hiểu', hint: 'Ghi rõ bước/khái niệm em chưa hiểu. AI giải thích dễ hiểu kèm lí thuyết liên quan.' },
+  { key: 'ask', intent: 'ask_guidance', label: 'Đặt câu hỏi / tư vấn lí thuyết', hint: 'Hỏi về lí thuyết, công thức, phương pháp giải một dạng bài.' },
+  { key: 'practice', intent: 'request_exercises', label: 'Xin bài luyện tập tương tự', hint: 'Nêu dạng bài em muốn luyện thêm; AI đưa bài tương tự kèm gợi ý.' },
+] as const;
+
+type LessonOption = { id: string; title: string; grade: string | number; chapter: string };
 
 export default function LearnerWorkspace({
   session,
@@ -28,7 +39,9 @@ export default function LearnerWorkspace({
   const [conversation, setConversation] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
-  const [intent, setIntent] = useState('ask_guidance');
+  const [mode, setMode] = useState<(typeof MODES)[number]['key']>('check');
+  const [lessonId, setLessonId] = useState('');
+  const [lessons, setLessons] = useState<LessonOption[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -61,6 +74,11 @@ export default function LearnerWorkspace({
   useEffect(() => {
     let alive = true;
     if (!initialAi) void checkAi();
+    api<LessonOption[]>('/curriculum')
+      .then(rows => {
+        if (alive) setLessons(rows);
+      })
+      .catch(() => null);
     api<{ id: string; created_at: string }[]>('/conversations')
       .then(rows => {
         if (alive) {
@@ -80,7 +98,7 @@ export default function LearnerWorkspace({
           if (alive) setError(e.message);
         });
     void load();
-    const timer = setInterval(load, 8000);
+    const timer = setInterval(load, 30000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -115,30 +133,35 @@ export default function LearnerWorkspace({
     setBusy(true);
     setError('');
     try {
-      const key = JSON.stringify([conversation, text, intent, file?.name, file?.size, file?.lastModified]);
+      const selected = MODES.find(m => m.key === mode) || MODES[0];
+      const key = JSON.stringify([conversation, text, mode, lessonId, file?.name, file?.size, file?.lastModified]);
       let draft = requestRef.current;
       if (!draft || draft.key !== key) {
         draft = { key, requestId: crypto.randomUUID(), attachmentIds: [] };
         requestRef.current = draft;
       }
-      if (file && !draft.attachmentIds.length) {
-        setStatus('Đang tải tệp lên kho riêng tư…');
-        draft.attachmentIds = [await upload(file)];
-      }
-      setStatus('Đang chờ AI xử lý và lưu phản hồi…');
+      const inlineFiles = file ? [await fileToInline(file)] : [];
+      const message = mode === 'explain' && text.trim() ? `Em chưa hiểu, hãy giải thích giúp em: ${text}` : text;
+      setStatus(selected.intent === 'submit_solution' ? 'AI đang kiểm tra từng bước bài giải…' : 'Đang chờ AI trả lời…');
       await post('/ai/chat', {
         requestId: draft.requestId,
         conversationId: conversation,
-        message: text,
-        attachmentIds: draft.attachmentIds,
-        intent,
+        message,
+        attachmentIds: [],
+        intent: selected.intent,
+        lessonId: lessonId || undefined,
+        inlineFiles,
       });
       setMessages(await api(`/messages?conversationId=${conversation}`));
       setText('');
       setFile(null);
       requestRef.current = null;
       setConversations(await api('/conversations'));
-      setStatus('Đã lưu phản hồi trên máy chủ.');
+      setStatus(
+        selected.intent === 'submit_solution'
+          ? 'Đã kiểm tra xong. Lỗi (nếu có) đã được lưu vào Hồ sơ tiến bộ để giáo viên theo dõi.'
+          : 'Đã lưu phản hồi.'
+      );
     } catch (e) {
       setError((e as Error).message);
       setStatus('Chưa hoàn thành. Nội dung đang nhập được giữ lại.');
@@ -150,6 +173,7 @@ export default function LearnerWorkspace({
 
   const latest = messages.filter(m => m.role === 'assistant').at(-1);
   const documentText = latest?.data?.detailedSolution || latest?.content || '';
+  const currentMode = MODES.find(m => m.key === mode) || MODES[0];
 
   return (
     <div className="space-y-4">
@@ -240,30 +264,62 @@ export default function LearnerWorkspace({
               {messages.map(m => (
                 <article key={m.id} className={m.role === 'user' ? 'bg-emerald-50 p-3 rounded' : 'bg-slate-50 p-3 rounded'}>
                   <b>{m.role === 'user' ? 'Bạn' : 'Cố vấn AI'}</b>
-                  <MathRenderer content={m.content} />
-                  {m.role === 'assistant' && (
-                    <p className="text-xs text-slate-500">
-                      {m.data?.modelUsed} · Kết luận: {m.data?.verdict} · Chưa được giáo viên xác minh
+                  {m.role === 'assistant' && m.data?.verdict && VERDICT_LABELS[m.data.verdict] && (
+                    <p className={`my-1 inline-block rounded-full border px-2 py-0.5 text-xs font-bold ${VERDICT_LABELS[m.data.verdict].className}`}>
+                      {VERDICT_LABELS[m.data.verdict].text}
                     </p>
+                  )}
+                  <MathRenderer content={m.content} />
+                  {m.role === 'assistant' && !!m.data?.errorEvidence?.length && (
+                    <p className="text-xs text-rose-700">Phát hiện {m.data.errorEvidence.length} lỗi — xem chi tiết ở khung “Phản hồi chi tiết”.</p>
                   )}
                 </article>
               ))}
             </div>
             <form onSubmit={send} className="space-y-3">
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Chế độ cố vấn">
+                {MODES.map(m => (
+                  <button
+                    type="button"
+                    key={m.key}
+                    disabled={busy}
+                    className={mode === m.key ? 'button' : 'secondary'}
+                    aria-pressed={mode === m.key}
+                    onClick={() => setMode(m.key)}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-600">{currentMode.hint}</p>
               <label>
-                Mục đích
-                <select value={intent} onChange={e => setIntent(e.target.value)} disabled={busy}>
-                  <option value="ask_guidance">Hỏi hướng dẫn (không chấm điểm)</option>
-                  <option value="submit_solution">Nộp lời giải để đánh giá</option>
-                  <option value="request_exercises">Yêu cầu bài luyện tập</option>
+                Chủ đề / chuyên đề (để hệ thống ghi nhận nội dung còn yếu)
+                <select value={lessonId} onChange={e => setLessonId(e.target.value)} disabled={busy}>
+                  <option value="">— Chưa chọn chủ đề —</option>
+                  {lessons.map(l => (
+                    <option key={l.id} value={l.id}>
+                      Lớp {l.grade} · {l.title}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
-                Câu hỏi / lời giải
-                <textarea value={text} onChange={e => setText(e.target.value)} maxLength={20000} rows={5} disabled={busy} />
+                {mode === 'check' ? 'Đề bài và bài làm của em' : 'Câu hỏi của em'}
+                <textarea
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  maxLength={20000}
+                  rows={6}
+                  disabled={busy}
+                  placeholder={
+                    mode === 'check'
+                      ? 'Ví dụ: Giải phương trình $\\log_2(x+1)+\\log_2(x-1)=3$. Bài làm của em: ...'
+                      : 'Nhập câu hỏi, có thể dùng $...$ cho công thức'
+                  }
+                />
               </label>
               <label>
-                Ảnh hoặc PDF (tối đa 10 MB)
+                Ảnh chụp bài làm hoặc PDF (ảnh được nén tự động, PDF tối đa 3 MB)
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp,application/pdf"
@@ -288,17 +344,17 @@ export default function LearnerWorkspace({
                 </p>
               )}
               <button className="button" disabled={busy || (!text.trim() && !file)}>
-                {busy ? 'Đang xử lý…' : 'Gửi'}
+                {busy ? 'Đang xử lý…' : currentMode.key === 'check' ? 'Nhờ AI kiểm tra bài' : 'Gửi cho Cố vấn AI'}
               </button>
               <p role="status">{status}</p>
             </form>
           </section>
           <section className="panel">
             <h2>Phản hồi chi tiết</h2>
-            {documentText ? (
+            {latest ? (
               <>
-                <MathRenderer content={documentText} />
-                <p className="text-sm mt-4">Kết quả AI sơ bộ, có thể sai. Liên hệ giáo viên để thẩm định.</p>
+                <AdvisorResult data={{ ...latest.data, chatReply: latest.content }} showReply={false} />
+                <p className="text-sm mt-4">Kết quả AI sơ bộ, có thể sai. Giáo viên sẽ thẩm định trong mục Bài nộp.</p>
                 <button onClick={() => setTab('documents')}>Mở trình soạn tài liệu</button>
               </>
             ) : (

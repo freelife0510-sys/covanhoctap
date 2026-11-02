@@ -115,3 +115,54 @@ export async function upload(file: File) {
   await post('/uploads/complete', { attachmentId: authorized.attachmentId });
   return authorized.attachmentId;
 }
+
+export interface InlineFile {
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp' | 'application/pdf';
+  data: string;
+}
+
+const INLINE_PDF_MAX_BYTES = 3 * 1024 * 1024;
+
+function readAsBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(new Error('Không đọc được tệp.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Prepares a photo/PDF of the student's work to send with the AI request.
+ * Photos are scaled to at most 1600px and re-encoded as JPEG so they stay small.
+ */
+export async function fileToInline(file: File): Promise<InlineFile> {
+  if (file.type === 'application/pdf') {
+    if (file.size > INLINE_PDF_MAX_BYTES) throw new Error('Tệp PDF vượt 3 MB. Hãy chụp ảnh trang bài làm thay cho PDF.');
+    return { mimeType: 'application/pdf', data: await readAsBase64(file) };
+  }
+  if (!file.type.startsWith('image/')) throw new Error('Chỉ hỗ trợ ảnh (PNG, JPG, WebP) hoặc PDF.');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Không mở được ảnh. Hãy chọn ảnh JPG hoặc PNG.'));
+      el.src = url;
+    });
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Trình duyệt không xử lý được ảnh.');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    if (!blob) throw new Error('Không nén được ảnh.');
+    return { mimeType: 'image/jpeg', data: await readAsBase64(blob) };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}

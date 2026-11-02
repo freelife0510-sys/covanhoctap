@@ -40,18 +40,18 @@ export function mutate(req: IncomingMessage) {
     throw new HttpError(403, 'ORIGIN_REJECTED', 'Nguồn yêu cầu không được phép. Hãy mở ứng dụng đúng địa chỉ chính thức rồi thử lại.');
   }
 }
-export async function body(req: IncomingMessage): Promise<unknown> {
+export async function body(req: IncomingMessage, limit = 512_000): Promise<unknown> {
   if (!(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) throw new HttpError(415, 'JSON_REQUIRED', 'Yêu cầu phải dùng application/json.');
   const parsed = (req as IncomingMessage & { body?: unknown }).body;
   if (parsed !== undefined) {
     const raw = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
-    if (Buffer.byteLength(raw) > 512000) throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'Yêu cầu vượt giới hạn.');
+    if (Buffer.byteLength(raw) > limit) throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'Yêu cầu vượt giới hạn.');
     try { return typeof parsed === 'string' ? JSON.parse(parsed) : parsed; } catch { throw new HttpError(400, 'INVALID_JSON', 'JSON không hợp lệ.'); }
   }
   let size = 0; const parts: Buffer[] = [];
   for await (const part of req) {
     const b = Buffer.isBuffer(part) ? part : Buffer.from(part); size += b.length;
-    if (size > 512_000) throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'Yêu cầu vượt giới hạn. Tệp phải tải qua Storage.');
+    if (size > limit) throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'Yêu cầu vượt giới hạn. Tệp phải tải qua Storage.');
     parts.push(b);
   }
   try { return JSON.parse(Buffer.concat(parts).toString() || '{}'); }
